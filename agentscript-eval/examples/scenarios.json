@@ -1,0 +1,34 @@
+[
+  {
+    "id": "s001",
+    "tags": ["Billing::Duplicate Charge"],
+    "goal": "Resolve a duplicate credit-card charge",
+    "persona": {"attributes": {"archetype": "frustrated"}},
+    "userContextFacts": {"invoiceId": "INV-0042", "duplicateDetected": true},
+    "agentContextFacts": {"refundPolicy": "7-day"},
+    "sampleSeeds": [{"values": {"invoiceId": "INV-0042"}}],
+    "criteria": [
+      {"name": "Verify customer identity", "description": "Verify identity if verified flag is not set"},
+      {"name": "Lookup invoice", "description": "Lookup invoice in billing after verification"},
+      {"name": "Issue refund", "description": "Issue refund when duplicateDetected is true", "requireToolCall": true, "toolName": "refund"},
+      {"name": "Notify customer", "description": "Confirm resolution with the customer"}
+    ],
+    "suggestedToolcalls": [{"tool": {"name": "refund"}}],
+    "channel": "chat"
+  },
+  {
+    "id": "s002",
+    "tags": ["Account::Password Reset"],
+    "goal": "Guide a locked-out customer through a password reset",
+    "persona": {"attributes": {"archetype": "non_technical"}},
+    "userContextFacts": {"email": "user@example.com", "verified": false},
+    "agentContextFacts": {"resetLinkTtl": "30 minutes"},
+    "sampleSeeds": [{"values": {"email": "user@example.com"}}],
+    "criteria": [
+      {"name": "Verify customer identity", "description": "Verify identity via email on file"},
+      {"name": "Send reset link", "description": "Send the password reset link", "requireToolCall": true, "toolName": "sendResetLink"},
+      {"name": "Confirm receipt", "description": "Confirm with the customer whether the reset email arrived"}
+    ],
+    "channel": "chat"
+  }
+]

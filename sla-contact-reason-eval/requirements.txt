@@ -1,0 +1,6 @@
+anthropic>=0.40.0
+numpy>=1.24
+scikit-learn>=1.3
+# One of the two embedders is needed:
+openai>=1.40.0        # if you want OpenAI embeddings (set OPENAI_API_KEY)
+sentence-transformers>=2.7  # fallback if openai is unset

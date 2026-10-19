@@ -1,0 +1,43 @@
+{
+  "model": {
+    "judge": "claude-sonnet-4-6",
+    "embedder": "text-embedding-3-large"
+  },
+  "temperature": 0,
+  "concurrency": 4,
+  "cache": {
+    "dir": ".cache",
+    "judge_calls": true
+  },
+  "sampling": {
+    "grounding_evidence_top_k": 5,
+    "variation_extract_n": 200,
+    "variation_sim_threshold": 0.78
+  },
+  "thresholds": {
+    "tag_coverage": 0.85,
+    "scenario_grounding": 0.90,
+    "scenario_evaluability": 0.85,
+    "verification_coverage": 0.95,
+    "criteria_completeness": 0.85,
+    "field_completeness": 0.95,
+    "variation_coverage": 0.85,
+    "scenario_uniqueness": 0.90,
+    "tagging_confidence": 0.70
+  },
+  "sensitive_patterns": [
+    "invoice", "credit", "refund", "charge", "case", "ticket",
+    "unlink", "remove", "delete", "permission", "access",
+    "cancel", "escalat", "reset password"
+  ],
+  "verification_patterns": [
+    "verify", "confirm", "validate", "authenticat", "cross-?reference",
+    "match", "cross-?check", "lookup", "verif(y|ication)"
+  ],
+  "tagging_confidence_floor": 0.60,
+  "required_fields": ["goal", "persona", "userContextFacts", "agentContextFacts", "sampleSeeds", "criteria", "tags"],
+  "retry": {
+    "max": 3,
+    "on": ["parse_error", "rate_limit", "timeout"]
+  }
+}

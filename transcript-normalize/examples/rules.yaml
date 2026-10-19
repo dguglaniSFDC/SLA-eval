@@ -1,0 +1,21 @@
+# Example role-map for transcript-normalize.
+#
+# Rules are tried in order within each group. Agents are checked first, then
+# customers. Unmatched speakers fall back to the default: phone-number pattern
+# → "customer", alphabetic name → "agent".
+
+agents:
+  # Exact name (case-insensitive)
+  - "Escarlen Castillo"
+  - "Anthony Rivera"
+
+  # Regex match on the raw speaker string
+  - regex: "@aztec\\.com$"       # email-suffixed names from vendor exports
+  - regex: "^(Rep|Agent) "        # labeled rows like "Agent 03: ..."
+  - regex: "^Aztec "              # anyone identified as the vendor
+
+customers:
+  - regex: "^cust_[0-9]+$"        # anonymized customer ids
+  - regex: "^\\+?\\d{10,}$"       # redundant (default handles phones) but explicit
+  - "Guest User"
+  - "External Caller"

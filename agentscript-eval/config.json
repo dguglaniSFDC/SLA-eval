@@ -1,0 +1,47 @@
+{
+  "deterministic_verbs": [
+    "if", "else", "elif", "run", "transition", "escalate", "set", "assign",
+    "goto", "when", "unless", "match", "case", "switch", "and", "or", "not"
+  ],
+  "known_condition_signals": [
+    "verified", "verification", "tier", "plan", "order age", "order_age",
+    "status", "balance", "state", "country", "region", "role", "entitled",
+    "channel", "segment", "has_", "is_", "flag"
+  ],
+  "nl_reasoning_signals": [
+    "please consider", "use your judgment", "think about", "decide whether",
+    "determine if", "evaluate whether", "based on context", "if appropriate",
+    "when it makes sense", "as needed"
+  ],
+  "action_verbs": [
+    "lookup", "fetch", "get", "search", "verify", "confirm", "validate",
+    "create", "update", "cancel", "refund", "send", "schedule", "escalate",
+    "unlink", "remove", "set", "notify", "log"
+  ],
+  "flow_phases": {
+    "lookup":       ["lookup", "fetch", "search", "get", "retrieve"],
+    "decision":     ["verify", "confirm", "validate", "check", "determine", "if"],
+    "action":       ["refund", "update", "create", "cancel", "send", "schedule", "unlink", "remove", "escalate"],
+    "confirmation": ["confirm", "summarize", "notify", "acknowledge", "close"]
+  },
+  "min_instruction_lines": 5,
+  "min_real_actions": 2,
+  "passthrough_signals": ["route to", "handoff to", "transfer to", "delegate to"],
+  "hardcode_marker_patterns": [
+    "INV-\\d+", "ORD-\\d+", "CASE-\\d+", "TKT-\\d+",
+    "\\$\\d+(?:\\.\\d{2})?",
+    "\\d{4}-\\d{2}-\\d{2}",
+    "\\+?1?\\d{10,}"
+  ],
+  "thresholds": {
+    "shape_structural_stability": 0.90,
+    "use_case_ownership": 0.90,
+    "determinism": 0.70,
+    "overfitting_hardcoding": 0.90,
+    "use_case_focus": 0.85,
+    "subagent_substance": 0.85,
+    "instruction_substance": 0.80,
+    "routing_precision": 0.85,
+    "action_gating": 0.90
+  }
+}

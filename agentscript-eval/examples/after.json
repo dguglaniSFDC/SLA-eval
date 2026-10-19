@@ -1,0 +1,46 @@
+{
+  "subagents": [
+    {
+      "name": "Router",
+      "instructions": [
+        "You are the main triage router.",
+        "Classify intent and hand off to the right specialist subagent.",
+        "If you cannot classify, escalate."
+      ],
+      "actions": [
+        {"type": "handoff", "target": "RefundAgent"},
+        {"type": "handoff", "target": "PasswordResetAgent"}
+      ]
+    },
+    {
+      "name": "RefundAgent",
+      "instructions": [
+        "Confirm the customer identity before touching any invoice.",
+        "Look up the invoice referenced by the customer in the billing system.",
+        "If the invoice shows two charges within the duplicate detection window, issue a refund.",
+        "Otherwise explain to the customer why a refund is not applicable.",
+        "Confirm the resolution with the customer in a short summary."
+      ],
+      "actions": [
+        {"type": "verify", "target": "customer_identity"},
+        {"type": "lookup", "target": "invoice", "available_when": "verified == true"},
+        {"type": "refund", "target": "${invoiceId}", "available_when": "duplicateDetected == true"},
+        {"type": "notify", "target": "customer"}
+      ]
+    },
+    {
+      "name": "PasswordResetAgent",
+      "instructions": [
+        "Verify the customer identity via email on file.",
+        "Send the password reset link to the verified email.",
+        "If the reset fails within the 30-minute window, offer a phone-based reset.",
+        "Confirm successful reset with the customer before closing."
+      ],
+      "actions": [
+        {"type": "verify", "target": "email_on_file"},
+        {"type": "send", "target": "sendResetLink", "available_when": "verified == true"},
+        {"type": "notify", "target": "customer"}
+      ]
+    }
+  ]
+}

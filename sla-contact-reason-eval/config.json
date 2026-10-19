@@ -1,0 +1,29 @@
+{
+  "model": {
+    "judge": "claude-sonnet-4-6",
+    "judge_calibration": "claude-opus-4-8",
+    "embedder": "text-embedding-3-large"
+  },
+  "temperature": 0,
+  "concurrency": 4,
+  "cache": {
+    "dir": ".cache",
+    "judge_calls": true
+  },
+  "sampling": {
+    "coverage_extract_n": 200,
+    "evidence_top_k": 5
+  },
+  "clustering": {
+    "intent_sim_threshold": 0.78
+  },
+  "thresholds": {
+    "coverage": 0.85,
+    "evidence_backing": 0.90,
+    "sibling_distinctness": 0.85
+  },
+  "retry": {
+    "max": 3,
+    "on": ["parse_error", "rate_limit", "timeout"]
+  }
+}

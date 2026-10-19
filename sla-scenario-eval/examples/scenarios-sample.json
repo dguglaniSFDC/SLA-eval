@@ -1,0 +1,37 @@
+[
+  {
+    "id": "s001",
+    "tags": ["Billing::Duplicate Charge"],
+    "goal": "Resolve a duplicate credit-card charge",
+    "persona": {"attributes": {"archetype": "frustrated_long_time_customer"}},
+    "userContextFacts": {"invoiceId": "INV-0042", "chargeAmount": "$49.99"},
+    "agentContextFacts": {"refundPolicy": "7-day window", "duplicateDetectionWindow": "24h"},
+    "sampleSeeds": [{"values": {"invoiceId": "INV-0042"}}],
+    "criteria": [
+      {"name": "Verify customer identity", "description": "Verify the customer's identity before any account action", "requireToolCall": false},
+      {"name": "Issue refund", "description": "Process the refund for the duplicate charge", "requireToolCall": true, "toolName": "issueRefund"}
+    ],
+    "suggestedToolcalls": [
+      {"tool": {"name": "issueRefund", "inputSchema": {"properties": {"invoiceId": {"type": "string"}, "amount": {"type": "number"}}}}}
+    ],
+    "channel": "chat"
+  },
+  {
+    "id": "s002",
+    "tags": ["Account::Password Reset"],
+    "goal": "Guide a locked-out customer through a password reset",
+    "persona": {"attributes": {"archetype": "non_technical_senior"}},
+    "userContextFacts": {"email": "user@example.com"},
+    "agentContextFacts": {"resetLinkTtl": "30 minutes"},
+    "sampleSeeds": [{"values": {"email": "user@example.com"}}],
+    "criteria": [
+      {"name": "Verify customer identity", "description": "Confirm identity via email on file", "requireToolCall": false},
+      {"name": "Send reset link", "description": "Send the password reset link", "requireToolCall": true, "toolName": "sendResetLink"},
+      {"name": "Confirm receipt", "description": "If the reset fails, offer phone-based reset", "requireToolCall": false}
+    ],
+    "suggestedToolcalls": [
+      {"tool": {"name": "sendResetLink", "inputSchema": {"properties": {"email": {"type": "string"}}}}}
+    ],
+    "channel": "chat"
+  }
+]

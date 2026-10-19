@@ -1,0 +1,15 @@
+{
+  "subagents": [
+    {
+      "name": "Router",
+      "instructions": [
+        "You are the main triage router.",
+        "Classify intent and hand off to the right specialist subagent.",
+        "If you cannot classify, escalate."
+      ],
+      "actions": [
+        {"type": "handoff", "target": "RefundAgent"}
+      ]
+    }
+  ]
+}
