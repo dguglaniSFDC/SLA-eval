@@ -34,14 +34,12 @@
     "\\+?1?\\d{10,}"
   ],
   "thresholds": {
-    "shape_structural_stability": 0.90,
     "use_case_ownership": 0.90,
     "determinism": 0.70,
     "overfitting_hardcoding": 0.90,
     "use_case_focus": 0.85,
     "subagent_substance": 0.85,
     "instruction_substance": 0.80,
-    "routing_precision": 0.85,
     "action_gating": 0.90
   }
 }

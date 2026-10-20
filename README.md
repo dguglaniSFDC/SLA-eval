@@ -7,7 +7,7 @@ Four skills for scoring SLAgent DataPrep output end-to-end: transcript prep, tax
 | [`transcript-normalize`](transcript-normalize/) | Convert raw VTT/TXT/JSON/CSV transcripts into the canonical `{id, turns:[{role, text}]}` shape. |
 | [`sla-contact-reason-eval`](sla-contact-reason-eval/) | Score a contact-reason taxonomy against Coverage, Evidence Backing, and Sibling Distinctness. |
 | [`sla-scenario-eval`](sla-scenario-eval/) | Score a scenarios file against nine P0/P1 scenario-quality metrics (tag coverage, grounding, evaluability, verification coverage, criteria completeness, field completeness, variation, uniqueness, tagging confidence). |
-| [`agentscript-eval`](agentscript-eval/) | Diff a before/after AgentScript and score the added material against nine structural + semantic metrics (shape stability, ownership, determinism, hardcoding, focus, substance, instruction substance, routing precision, action gating). |
+| [`agentscript-eval`](agentscript-eval/) | Diff a before/after AgentScript and score the added material against seven structural + semantic metrics (ownership, determinism, hardcoding, focus, substance, instruction substance, action gating). |
 
 ## Quickstart — taxonomy eval
 
@@ -58,6 +58,6 @@ python ~/.claude/skills/agentscript-eval/harness/run.py \
   --out ./runs/<run-name>
 ```
 
-Optional: `--after-run2` enables Shape Stability; `--routing-trace` enables Routing Precision; `--static-only` skips LLM calls.
+Optional: `--static-only` skips LLM calls.
 
 Each skill has its own README with full input shapes, options, and design notes.

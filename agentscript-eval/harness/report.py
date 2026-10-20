@@ -6,26 +6,22 @@ from pathlib import Path
 from typing import Any
 
 METRIC_ORDER = [
-    "shape_structural_stability",
     "use_case_ownership",
     "determinism",
     "overfitting_hardcoding",
     "use_case_focus",
     "subagent_substance",
     "instruction_substance",
-    "routing_precision",
     "action_gating",
 ]
 
 LABELS = {
-    "shape_structural_stability": "Shape & structural stability",
     "use_case_ownership": "Use-case ownership",
     "determinism": "Determinism",
     "overfitting_hardcoding": "Overfitting / hardcoding",
     "use_case_focus": "Use-case focus",
     "subagent_substance": "Subagent substance",
     "instruction_substance": "Instruction substance",
-    "routing_precision": "Routing precision",
     "action_gating": "Action gating",
 }
 
@@ -93,16 +89,7 @@ def write_report(results: dict[str, Any], thresholds: dict[str, float], out_dir:
 
 
 def _drilldown(lines, name, r):
-    if name == "shape_structural_stability":
-        lines.append(f"- Subagent Jaccard: {r.get('subagent_jaccard')}; action Jaccard (shared): {r.get('action_jaccard_shared')}")
-        if r.get("only_in_run1"):
-            lines.append(f"- Only in run1: {', '.join(r['only_in_run1'])}")
-        if r.get("only_in_run2"):
-            lines.append(f"- Only in run2: {', '.join(r['only_in_run2'])}")
-        for p in (r.get("per_subagent") or [])[:20]:
-            if p["jaccard"] < 1.0:
-                lines.append(f"  - `{p['subagent']}` jacc={p['jaccard']} +run1={p['only_run1']} +run2={p['only_run2']}")
-    elif name == "use_case_ownership":
+    if name == "use_case_ownership":
         lines.append(f"- Owned: {r.get('n_owned')}/{r.get('n_scored')}")
         for u in (r.get("unowned") or [])[:30]:
             lines.append(f"  - `{u.get('scenario')}` → missing={u.get('missing_phases', [])}, handoff={u.get('mid_flow_handoff', False)}")
@@ -131,12 +118,6 @@ def _drilldown(lines, name, r):
         for p in (r.get("per_subagent") or [])[:20]:
             if p["ratio"] is not None and p["ratio"] < 1.0:
                 lines.append(f"  - `{p['subagent']}` {p['reflected']}/{p['total']} missing={p['missing']}")
-    elif name == "routing_precision":
-        lines.append(f"- Router type: {r.get('router_type')}")
-        for cat, info in (r.get("by_category") or {}).items():
-            lines.append(f"  - {cat}: {info['ok']}/{info['total']} = {info['accuracy']*100:.1f}%")
-        for c in (r.get("confusion") or [])[:30]:
-            lines.append(f"    - `{c['scenario_id']}` [{c['category']}] expected={c['expected']} actual={c['actual']}")
     elif name == "action_gating":
         lines.append(f"- Gated: {r.get('n_gated')}/{r.get('n_with_precondition')}")
         for u in (r.get("sensitive_ungated") or [])[:30]:

@@ -1,9 +1,7 @@
-"""Static metrics — shape stability, use-case ownership, overfitting, focus, substance, routing, gating."""
+"""Static metrics — use-case ownership, overfitting, focus, substance, gating."""
 from __future__ import annotations
 
-import json
 import re
-from statistics import mean
 from typing import Any
 
 
@@ -16,18 +14,9 @@ def _tag_to_reason(tag: str) -> tuple[str, str]:
     return "", tag.strip().lower()
 
 
-def _attribute_scenarios(added_subs: dict, scenarios: list[dict], routing_trace: list[dict] | None) -> dict[str, list[dict]]:
+def _attribute_scenarios(added_subs: dict, scenarios: list[dict]) -> dict[str, list[dict]]:
     """Return {subagent_name: [scenario, ...]}."""
     attrib: dict[str, list[dict]] = {name: [] for name in added_subs}
-    if routing_trace:
-        by_sid = {s.get("id"): s for s in scenarios}
-        for row in routing_trace:
-            sub = row.get("first_hop_subagent")
-            sid = row.get("scenario_id")
-            if sub in attrib and sid in by_sid:
-                attrib[sub].append(by_sid[sid])
-        return attrib
-
     for s in scenarios:
         sid = s.get("id") or ""
         tags = [t.lower() for t in (s.get("tags") or [])]
@@ -50,46 +39,7 @@ def _attribute_scenarios(added_subs: dict, scenarios: list[dict], routing_trace:
     return attrib
 
 
-# ---------- 1. Shape & Structural Stability ----------
-
-def shape_structural_stability(after: dict, after_run2: dict) -> dict[str, Any]:
-    a1 = set(after.get("subagents", {}).keys())
-    a2 = set(after_run2.get("subagents", {}).keys())
-    sub_jacc = len(a1 & a2) / len(a1 | a2) if (a1 | a2) else 1.0
-
-    shared = sorted(a1 & a2)
-    per_sub: list[dict] = []
-    jaccs: list[float] = []
-    for name in shared:
-        s1 = after["subagents"][name]
-        s2 = after_run2["subagents"][name]
-        a1_ids = {a["id"] for a in s1.get("actions", [])}
-        a2_ids = {a["id"] for a in s2.get("actions", [])}
-        if not (a1_ids | a2_ids):
-            jacc = 1.0
-        else:
-            jacc = len(a1_ids & a2_ids) / len(a1_ids | a2_ids)
-        jaccs.append(jacc)
-        per_sub.append({
-            "subagent": name,
-            "jaccard": round(jacc, 3),
-            "only_run1": sorted(a1_ids - a2_ids),
-            "only_run2": sorted(a2_ids - a1_ids),
-        })
-    act_jacc = mean(jaccs) if jaccs else 0.0
-    score = 0.5 * sub_jacc + 0.5 * act_jacc
-    return {
-        "score": score,
-        "subagent_jaccard": round(sub_jacc, 3),
-        "action_jaccard_shared": round(act_jacc, 3),
-        "only_in_run1": sorted(a1 - a2),
-        "only_in_run2": sorted(a2 - a1),
-        "shared": shared,
-        "per_subagent": per_sub,
-    }
-
-
-# ---------- 2. Use-Case Ownership ----------
+# ---------- 1. Use-Case Ownership ----------
 
 def _phase_of(action: dict, flow_phases: dict) -> str | None:
     verb = (action.get("type") or "").lower()
@@ -171,7 +121,7 @@ def use_case_ownership(added_subs: dict, scenarios: list[dict], flow_phases: dic
     return {"score": score, "n_owned": owned, "n_scored": scored, "unowned": unowned}
 
 
-# ---------- 3. Overfitting / Hardcoding ----------
+# ---------- 2. Overfitting / Hardcoding ----------
 
 def overfitting(added_subs: dict, scenarios: list[dict], marker_patterns: list[str]) -> dict[str, Any]:
     seed_literals: set[str] = set()
@@ -208,7 +158,7 @@ def overfitting(added_subs: dict, scenarios: list[dict], marker_patterns: list[s
     }
 
 
-# ---------- 4. Use-Case Focus ----------
+# ---------- 3. Use-Case Focus ----------
 
 def use_case_focus(added_subs: dict, attrib: dict) -> dict[str, Any]:
     scored_subs = []
@@ -242,7 +192,7 @@ def use_case_focus(added_subs: dict, attrib: dict) -> dict[str, Any]:
     }
 
 
-# ---------- 5. Subagent Substance ----------
+# ---------- 4. Subagent Substance ----------
 
 def subagent_substance(added_subs: dict, config: dict) -> dict[str, Any]:
     min_instr = config["min_instruction_lines"]
@@ -291,62 +241,7 @@ def subagent_substance(added_subs: dict, config: dict) -> dict[str, Any]:
     }
 
 
-# ---------- 6. Routing Precision ----------
-
-def routing_precision(scenarios: list[dict], routing_trace: list[dict], added_subs: dict, attrib: dict) -> dict[str, Any]:
-    expected_of: dict[str, str] = {}
-    for s in scenarios:
-        sid = s.get("id")
-        if not sid:
-            continue
-        if s.get("expectedSubagent"):
-            expected_of[sid] = s["expectedSubagent"]
-            continue
-        for name, scen_list in attrib.items():
-            if any((x.get("id") == sid) for x in scen_list):
-                expected_of[sid] = name
-                break
-
-    scored_rows: list[dict] = []
-    confusion: list[dict] = []
-    by_cat: dict[str, dict[str, int]] = {}
-
-    router_types = set()
-    for row in routing_trace:
-        router_types.add(row.get("router_type") or "unknown")
-        cat = row.get("category") or "normal"
-        if cat == "normal":
-            continue
-        sid = row.get("scenario_id")
-        expected = expected_of.get(sid, "")
-        if cat == "out_of_scope":
-            correct = (row.get("first_hop_subagent") or "").lower() in {"escalate", "fallback"}
-        else:
-            correct = (row.get("first_hop_subagent") == expected) if expected else False
-        scored_rows.append({"sid": sid, "cat": cat, "correct": correct})
-        by_cat.setdefault(cat, {"ok": 0, "total": 0})
-        by_cat[cat]["total"] += 1
-        if correct:
-            by_cat[cat]["ok"] += 1
-        else:
-            confusion.append({
-                "scenario_id": sid, "expected": expected,
-                "actual": row.get("first_hop_subagent"), "category": cat,
-            })
-
-    if not scored_rows:
-        return {"skipped": True, "reason": "routing trace contains no ambiguous/multi_intent/out_of_scope rows"}
-    score = sum(1 for r in scored_rows if r["correct"]) / len(scored_rows)
-    by_cat_pct = {k: {"accuracy": v["ok"] / v["total"], **v} for k, v in by_cat.items()}
-    return {
-        "score": score,
-        "router_type": "/".join(sorted(router_types)),
-        "by_category": by_cat_pct,
-        "confusion": confusion,
-    }
-
-
-# ---------- 7. Action Gating ----------
+# ---------- 5. Action Gating ----------
 
 SENSITIVE_VERBS = {
     "refund", "cancel", "unlink", "remove", "delete", "escalate",

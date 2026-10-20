@@ -52,26 +52,12 @@ def load_reasons(path: Path | None) -> list[dict]:
     return []
 
 
-def load_routing_trace(path: Path | None) -> list[dict] | None:
-    if not path:
-        return None
-    out = []
-    for line in path.read_text().splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        out.append(json.loads(line))
-    return out
-
-
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--before", type=Path, required=True)
     ap.add_argument("--after", type=Path, required=True)
     ap.add_argument("--scenarios", type=Path, required=True)
     ap.add_argument("--reasons", type=Path, default=None)
-    ap.add_argument("--after-run2", type=Path, default=None)
-    ap.add_argument("--routing-trace", type=Path, default=None)
     ap.add_argument("--out", type=Path, default=SKILL_ROOT / "runs" / "latest")
     ap.add_argument("--static-only", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
@@ -86,8 +72,6 @@ def main() -> int:
     after = parse_script(args.after)
     scenarios = load_scenarios(args.scenarios)
     reasons = load_reasons(args.reasons)
-    after_run2 = parse_script(args.after_run2) if args.after_run2 else None
-    routing_trace = load_routing_trace(args.routing_trace)
 
     diff = compute_diff(before, after)
     added_subs = effective_added_subagents(diff)
@@ -107,31 +91,21 @@ def main() -> int:
         return 0
 
     from static_metrics import (
-        shape_structural_stability, use_case_ownership, overfitting,
-        use_case_focus, subagent_substance, routing_precision, action_gating,
+        use_case_ownership, overfitting,
+        use_case_focus, subagent_substance, action_gating,
         _attribute_scenarios,
     )
     from report import write_report
 
-    attrib = _attribute_scenarios(added_subs, scenarios, routing_trace)
+    attrib = _attribute_scenarios(added_subs, scenarios)
 
     results: dict[str, Any] = {}
-
-    if after_run2:
-        results["shape_structural_stability"] = shape_structural_stability(after, after_run2)
-    else:
-        results["shape_structural_stability"] = {"skipped": True, "reason": "no --after-run2 provided"}
 
     results["use_case_ownership"] = use_case_ownership(added_subs, scenarios, config["flow_phases"], attrib)
     results["overfitting_hardcoding"] = overfitting(added_subs, scenarios, config["hardcode_marker_patterns"])
     results["use_case_focus"] = use_case_focus(added_subs, attrib)
     results["subagent_substance"] = subagent_substance(added_subs, config)
     results["action_gating"] = action_gating(added_subs, attrib)
-
-    if routing_trace:
-        results["routing_precision"] = routing_precision(scenarios, routing_trace, added_subs, attrib)
-    else:
-        results["routing_precision"] = {"skipped": True, "reason": "no --routing-trace provided"}
 
     if args.static_only:
         results["determinism"] = {"skipped": True, "reason": "static-only mode"}

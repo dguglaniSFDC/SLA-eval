@@ -9,10 +9,7 @@ Among added subagents, the percentage whose scenarios all come from **one** cont
 
 ## Attribution
 
-Each added subagent is attributed the set of scenarios that routed to it during training:
-1. If `--routing-trace` is provided, use its `first_hop_subagent` field.
-2. Otherwise, attribute by name match: scenarios whose tag `<Category>::<Reason>` or scenario id appears in the subagent's `handles` / `scope` / instructions text.
-3. Scenarios that can't be attributed to any added subagent are reported separately — they don't affect the score.
+Each added subagent is attributed the set of scenarios it handled during training by name match: scenarios whose tag `<Category>::<Reason>` or scenario id appears in the subagent's `handles` / `scope` / instructions text. Scenarios that can't be attributed to any added subagent are reported separately — they don't affect the score.
 
 ## Formula
 

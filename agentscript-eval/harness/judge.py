@@ -66,8 +66,7 @@ class Judge:
 
         response = self.client.messages.create(
             model=self.model,
-            max_tokens=1024,
-            temperature=0,
+            max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = response.content[0].text
