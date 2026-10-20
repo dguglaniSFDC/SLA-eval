@@ -6,8 +6,8 @@ Four skills for scoring SLAgent DataPrep output end-to-end: transcript prep, tax
 |---|---|
 | [`transcript-normalize`](transcript-normalize/) | Convert raw VTT/TXT/JSON/CSV transcripts into the canonical `{id, turns:[{role, text}]}` shape. |
 | [`sla-contact-reason-eval`](sla-contact-reason-eval/) | Score a contact-reason taxonomy against Coverage, Evidence Backing, and Sibling Distinctness. |
-| [`sla-scenario-eval`](sla-scenario-eval/) | Score a scenarios file against nine P0/P1 scenario-quality metrics (tag coverage, grounding, evaluability, verification coverage, criteria completeness, field completeness, variation, uniqueness, tagging confidence). |
-| [`agentscript-eval`](agentscript-eval/) | Diff a before/after AgentScript and score the added material against seven structural + semantic metrics (ownership, determinism, hardcoding, focus, substance, instruction substance, action gating). |
+| [`sla-scenario-eval`](sla-scenario-eval/) | Score a scenarios file against ten P0/P1 scenario-quality metrics (tag coverage, grounding, evaluability, reproducibility, verification coverage, criteria completeness, field completeness, variation, uniqueness, tagging confidence). |
+| [`agentscript-eval`](agentscript-eval/) | Diff a before/after AgentScript and score the added material against seven structural + semantic metrics (use-case ownership, determinism, overfitting / industry-tied, use-case focus, subagent substance, instruction substance, action gating). |
 
 ## Quickstart — taxonomy eval
 
@@ -37,27 +37,24 @@ cat ./runs/<run-name>/report.md
 ## Quickstart — scenario eval
 
 ```bash
-# Scenarios + reasons (+ optional transcripts)
+# Scenarios + reasons (+ optional transcripts, + optional second run)
 python ~/.claude/skills/sla-scenario-eval/harness/run.py \
-  --scenarios ./scenarios.json \
-  --reasons ./reasons.csv \
-  --transcripts ./conversations/ \
-  --out ./runs/<run-name>
+  --input ./runs/<run-name>
 ```
 
-Inputs expected: `scenarios.json`, `reasons.csv` or `reasons.json`, `conversations/` (optional, unlocks the grounding metric).
+Inputs expected: `scenarios.json`, `reasons.csv` or `reasons.json`, `conversations/` (optional), `scenarios_run2.json` (optional, unlocks Reproducibility).
 
 ## Quickstart — AgentScript eval
 
 ```bash
 python ~/.claude/skills/agentscript-eval/harness/run.py \
-  --before ./scripts/before.json \
-  --after  ./scripts/after.json \
+  --before ./scripts/before.txt \
+  --after  ./scripts/after.txt \
   --scenarios ./scenarios.json \
   --reasons   ./reasons.csv \
   --out ./runs/<run-name>
 ```
 
-Optional: `--static-only` skips LLM calls.
+`--before` / `--after` accept JSON, YAML, or raw DSL (`.txt`); the parser auto-detects. `--static-only` skips LLM-backed metrics (determinism, overfitting, instruction substance) and runs only the structural checks.
 
 Each skill has its own README with full input shapes, options, and design notes.
