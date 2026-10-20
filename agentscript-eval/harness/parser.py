@@ -183,10 +183,31 @@ ACTION_LINE_RE = re.compile(
     r"(?:\s+(?:when|if)\s+(?P<gate>.+))?$",
     re.IGNORECASE,
 )
+# AgentScript action/transition reference: `Name: @actions.Target` or `Name: @utils.verb to @subagent.X`.
+# Only matches lines indented under an `actions:` block (two or more leading spaces) so top-level
+# `actions:` schema headers don't get mistaken for action references.
+ACTION_REF_LINE_RE = re.compile(
+    r"^(?P<indent>\s{2,})(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*:\s*"
+    r"@(?P<ns>actions|utils)\.(?P<target>[A-Za-z_][A-Za-z0-9_]*)"
+    r"(?:\s+to\s+@subagent\.(?P<xfer>[A-Za-z_][A-Za-z0-9_]*))?",
+    re.IGNORECASE,
+)
 SUBAGENT_HEADER_RE = re.compile(r"^\s*(?:subagent|agent|sub_agent)\s+(?P<name>[A-Za-z0-9_\-]+)", re.IGNORECASE)
 
 
 def _parse_action_line(line: str) -> dict | None:
+    ref = ACTION_REF_LINE_RE.match(line)
+    if ref:
+        ns = ref.group("ns").lower()
+        target_raw = ref.group("target")
+        xfer = ref.group("xfer")
+        if ns == "utils":
+            verb = target_raw.lower()
+            target = f"to @subagent.{xfer}" if xfer else ref.group("name")
+        else:
+            verb = ref.group("name").lower()
+            target = target_raw
+        return _mk_action(verb, target, raw=line.strip())
     m = ACTION_LINE_RE.match(line.strip())
     if not m:
         return None

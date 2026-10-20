@@ -41,21 +41,25 @@ def _attribute_scenarios(added_subs: dict, scenarios: list[dict]) -> dict[str, l
 
 # ---------- 1. Use-Case Ownership ----------
 
-def _phase_of(action: dict, flow_phases: dict) -> str | None:
-    verb = (action.get("type") or "").lower()
-    target = (action.get("target") or "").lower()
-    tokens = set(re.findall(r"[a-z]+", f"{verb} {target}"))
-    for phase in ("lookup", "action", "confirmation", "decision"):
-        verbs = flow_phases.get(phase, [])
-        if any(v in tokens for v in verbs):
-            return phase
-    return None
-
-
 HANDOFF_VERBS = {"handoff", "transition", "route", "delegate", "transfer"}
+
+# Capture `transition to @subagent.<Name>` in subagent body text. The DSL writes
+# these as `@utils.transition to @subagent.X`, so the preceding token isn't a
+# verb at line start — a body_text regex is the only reliable way to find them.
+_TRANSITION_TARGET_RE = re.compile(r"transition\s+to\s+@subagent\.([A-Za-z0-9_\-]+)", re.IGNORECASE)
+
+# Subagent names that are legitimate destinations for an end-of-flow return.
+# Returning to the router or escalating isn't a mid-flow handoff.
+_ROUTER_NAMES = {"agent_router", "router"}
 
 
 def use_case_ownership(added_subs: dict, scenarios: list[dict], flow_phases: dict, attrib: dict) -> dict[str, Any]:
+    """Owned iff the attributed subagent handles the scenario without delegating to
+    another non-router subagent. Phase coverage is intentionally not checked —
+    `subagent_substance` and `instruction_substance` already measure whether the
+    subagent has enough work in it; ownership only answers "did it stay here or
+    punt."
+    """
     owned = 0
     unowned = []
     scored = 0
@@ -75,87 +79,29 @@ def use_case_ownership(added_subs: dict, scenarios: list[dict], flow_phases: dic
             continue
         sub = added_subs[sub_name]
         scored += 1
-        actions = sub.get("actions", [])
-        phases_present = {_phase_of(a, flow_phases) for a in actions}
-        phases_present.discard(None)
 
-        criteria_phases = set()
-        for c in s.get("criteria") or []:
-            text = f"{c.get('name','')} {c.get('description','')}".lower()
-            for ph, verbs in flow_phases.items():
-                if any(v in text for v in verbs):
-                    criteria_phases.add(ph)
-
-        missing = criteria_phases - phases_present
-
-        handoff_idx = None
-        first_action_idx = None
-        last_conf_idx = None
-        for i, a in enumerate(actions):
-            if a.get("type") in HANDOFF_VERBS and a.get("type") != "escalate":
-                if handoff_idx is None:
-                    handoff_idx = i
-            if first_action_idx is None and _phase_of(a, flow_phases) == "lookup":
-                first_action_idx = i
-            if _phase_of(a, flow_phases) == "confirmation":
-                last_conf_idx = i
-
-        has_mid_flow_handoff = (
-            handoff_idx is not None
-            and first_action_idx is not None
-            and last_conf_idx is not None
-            and first_action_idx < handoff_idx < last_conf_idx
+        body = sub.get("body_text", "") or ""
+        targets = {t for t in _TRANSITION_TARGET_RE.findall(body)}
+        mid_flow_targets = sorted(
+            t for t in targets
+            if t.lower() not in _ROUTER_NAMES and t != sub_name
         )
 
-        if not missing and not has_mid_flow_handoff:
+        if not mid_flow_targets:
             owned += 1
         else:
             unowned.append({
                 "scenario": sid,
                 "subagent": sub_name,
-                "missing_phases": sorted(missing),
-                "mid_flow_handoff": has_mid_flow_handoff,
+                "handoff_targets": mid_flow_targets,
             })
 
     score = owned / scored if scored else 0.0
     return {"score": score, "n_owned": owned, "n_scored": scored, "unowned": unowned}
 
 
-# ---------- 2. Overfitting / Hardcoding ----------
-
-def overfitting(added_subs: dict, scenarios: list[dict], marker_patterns: list[str]) -> dict[str, Any]:
-    seed_literals: set[str] = set()
-    for s in scenarios:
-        for seed in s.get("sampleSeeds") or []:
-            for v in (seed.get("values") or {}).values():
-                if isinstance(v, (str, int, float)):
-                    seed_literals.add(str(v))
-
-    hardcoded: list[dict] = []
-    templated_slots = 0
-    for name, sub in added_subs.items():
-        body = sub.get("body_text", "") + "\n" + "\n".join(sub.get("instructions", []))
-        templated_slots += len(re.findall(r"\$\{[^}]+\}|\{\{[^}]+\}\}", body))
-
-        for lit in seed_literals:
-            if lit and lit in body:
-                hardcoded.append({"subagent": name, "literal": lit, "kind": "seed_value"})
-        for pat in marker_patterns:
-            for m in re.findall(pat, body):
-                hardcoded.append({"subagent": name, "literal": m, "kind": "marker_pattern"})
-
-    total = len(hardcoded) + templated_slots
-    score = (templated_slots / total) if total else 1.0
-    per_sub_counts: dict[str, int] = {}
-    for h in hardcoded:
-        per_sub_counts[h["subagent"]] = per_sub_counts.get(h["subagent"], 0) + 1
-    heavily_hardcoded = [k for k, v in per_sub_counts.items() if v >= 3]
-    return {
-        "score": score,
-        "hardcoded_literals": hardcoded,
-        "templated_slots": templated_slots,
-        "heavily_hardcoded_subagents": heavily_hardcoded,
-    }
+# ---------- 2. Overfitting / Industry-tied (judge-backed, lives here only for its signature;
+#                 the real implementation is in judge_metrics.overfitting). ----------
 
 
 # ---------- 3. Use-Case Focus ----------
@@ -198,7 +144,6 @@ def subagent_substance(added_subs: dict, config: dict) -> dict[str, Any]:
     min_instr = config["min_instruction_lines"]
     min_actions = config["min_real_actions"]
     passthrough = config["passthrough_signals"]
-    action_verbs = set(config["action_verbs"])
 
     thin: list[dict] = []
     passthrough_subs: list[str] = []
@@ -207,7 +152,7 @@ def subagent_substance(added_subs: dict, config: dict) -> dict[str, Any]:
     for name, sub in added_subs.items():
         instr = sub.get("instructions", [])
         actions = sub.get("actions", [])
-        real_actions = [a for a in actions if a["type"] in action_verbs and a["type"] not in HANDOFF_VERBS]
+        real_actions = [a for a in actions if a["type"] not in HANDOFF_VERBS]
         body_lower = sub.get("body_text", "").lower()
         is_passthrough = any(sig in body_lower for sig in passthrough) and len(real_actions) == 0
 
@@ -245,7 +190,7 @@ def subagent_substance(added_subs: dict, config: dict) -> dict[str, Any]:
 
 SENSITIVE_VERBS = {
     "refund", "cancel", "unlink", "remove", "delete", "escalate",
-    "update", "create", "set", "send",
+    "update", "create", "send",
 }
 
 

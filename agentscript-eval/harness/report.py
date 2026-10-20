@@ -92,17 +92,33 @@ def _drilldown(lines, name, r):
     if name == "use_case_ownership":
         lines.append(f"- Owned: {r.get('n_owned')}/{r.get('n_scored')}")
         for u in (r.get("unowned") or [])[:30]:
-            lines.append(f"  - `{u.get('scenario')}` → missing={u.get('missing_phases', [])}, handoff={u.get('mid_flow_handoff', False)}")
+            if u.get("reason") == "no attributed subagent":
+                lines.append(f"  - `{u.get('scenario')}` → no attributed subagent")
+            else:
+                lines.append(f"  - `{u.get('scenario')}` → `{u.get('subagent')}` hands off to {u.get('handoff_targets', [])}")
     elif name == "determinism":
-        lines.append(f"- Deterministic: {r.get('n_deterministic')}/{r.get('n_known_rules')} known-condition rules")
-        for n in (r.get("natural_language_rules") or [])[:20]:
-            lines.append(f"  - `{n['subagent']}` — {n['criterion']}: {n['reason']}")
+        lines.append(f"- Deterministic: {r.get('n_deterministic')}/{r.get('n_known_rules')} known-condition rules (grammar-expressible)")
+        if r.get("n_grammar_limit"):
+            lines.append(f"- Grammar-limit rules (excluded from scoring): {r.get('n_grammar_limit')}")
+        if r.get("natural_language_rules"):
+            lines.append("- Natural-language rules (could be lifted):")
+            for n in (r.get("natural_language_rules") or [])[:20]:
+                lines.append(f"  - `{n['subagent']}` — {n['criterion']}: {n['reason']}")
+                fix = n.get("suggested_fix")
+                if fix:
+                    lines.append(f"    - fix: {fix}")
+        if r.get("grammar_limit_rules"):
+            lines.append("- Candidates for grammar extension:")
+            for g in (r.get("grammar_limit_rules") or [])[:20]:
+                lines.append(f"  - `{g['subagent']}` — {g['criterion']}: {g['reason']}")
     elif name == "overfitting_hardcoding":
-        lines.append(f"- Templated slots: {r.get('templated_slots')}; hardcoded literals: {len(r.get('hardcoded_literals', []))}")
-        for h in (r.get("hardcoded_literals") or [])[:30]:
-            lines.append(f"  - `{h['subagent']}` literal `{h['literal']}` ({h['kind']})")
-        if r.get("heavily_hardcoded_subagents"):
-            lines.append(f"- Heavy offenders: {', '.join(r['heavily_hardcoded_subagents'])}")
+        lines.append(f"- Industry-generic: {r.get('n_generic')}/{r.get('n_total')}")
+        for t in (r.get("industry_tied_subagents") or [])[:20]:
+            inferred = t.get("inferred_industry") or "unspecified"
+            markers = t.get("markers") or []
+            lines.append(f"  - `{t['subagent']}` → inferred industry: **{inferred}**; markers: {markers}")
+            if t.get("reason"):
+                lines.append(f"    - {t['reason']}")
     elif name == "use_case_focus":
         lines.append(f"- Single-reason: {r.get('n_single_reason')}/{r.get('n_scored')}")
         for m in (r.get("multi_reason_subagents") or [])[:20]:

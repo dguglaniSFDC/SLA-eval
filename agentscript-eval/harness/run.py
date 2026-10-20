@@ -91,7 +91,7 @@ def main() -> int:
         return 0
 
     from static_metrics import (
-        use_case_ownership, overfitting,
+        use_case_ownership,
         use_case_focus, subagent_substance, action_gating,
         _attribute_scenarios,
     )
@@ -102,21 +102,22 @@ def main() -> int:
     results: dict[str, Any] = {}
 
     results["use_case_ownership"] = use_case_ownership(added_subs, scenarios, config["flow_phases"], attrib)
-    results["overfitting_hardcoding"] = overfitting(added_subs, scenarios, config["hardcode_marker_patterns"])
     results["use_case_focus"] = use_case_focus(added_subs, attrib)
     results["subagent_substance"] = subagent_substance(added_subs, config)
     results["action_gating"] = action_gating(added_subs, attrib)
 
     if args.static_only:
+        results["overfitting_hardcoding"] = {"skipped": True, "reason": "judge-backed; static-only mode"}
         results["determinism"] = {"skipped": True, "reason": "static-only mode"}
         results["instruction_substance"] = {"skipped": True, "reason": "static-only mode"}
     else:
         import anthropic
         from judge import Judge
-        from judge_metrics import determinism, instruction_substance
+        from judge_metrics import determinism, instruction_substance, overfitting
         client = anthropic.Anthropic()
         judge = Judge(client=client, model=args.model, cache_dir=args.cache_dir)
-        results["determinism"] = determinism(added_subs, scenarios, config, attrib, judge)
+        results["overfitting_hardcoding"] = overfitting(added_subs, judge)
+        results["determinism"] = determinism(added_subs, scenarios, config, attrib, judge, full_after=after["subagents"])
         results["instruction_substance"] = instruction_substance(added_subs, attrib, judge)
 
     diff_summary = {
