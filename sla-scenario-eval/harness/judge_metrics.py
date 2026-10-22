@@ -191,9 +191,16 @@ def uniqueness(scenarios: list[dict], judge: Judge) -> dict[str, Any]:
 def tagging_confidence(
     scenarios: list[dict], reasons: list[dict], floor: float, judge: Judge
 ) -> dict[str, Any]:
+    """% of scenarios confidently tagged to a single contact reason (confidence ≥ floor).
+
+    A low-confidence tag means the scenario sits near a category boundary — it
+    pollutes BOTH categories' rollups (counted under one, missing from the other),
+    so coverage/grounding/uniqueness drift against the wrong denominator.
+    """
     mistags = []
     boundary = []
     confidences: list[float] = []
+    confident = 0
 
     reason_candidates = [
         {"id": f"{r.get('category','')}::{r.get('name') or r.get('contact_reason')}", "category": r.get("category"), "name": r.get("name") or r.get("contact_reason"), "description": r.get("description", "")}
@@ -222,15 +229,23 @@ def tagging_confidence(
         matches_current = any(
             best_id.strip().lower() == t.strip().lower() for t in current_tags
         )
+        if conf >= floor:
+            confident += 1
+        else:
+            boundary.append({"scenario": s.get("id"), "confidence": conf, "suggested": best_id})
         if not matches_current and current_tags:
             mistags.append({"scenario": s.get("id"), "current": current_tags, "suggested": best_id, "confidence": conf})
-        if conf < floor:
-            boundary.append({"scenario": s.get("id"), "confidence": conf, "suggested": best_id})
 
     denom = len(scenarios)
-    score = (denom - len(mistags) - len(boundary)) / denom if denom else 1.0
-    score = max(0.0, score)
-    return {"score": score, "mistags": mistags, "boundary_cases": boundary, "mean_confidence": sum(confidences) / len(confidences) if confidences else 0.0}
+    score = confident / denom if denom else 1.0
+    return {
+        "score": score,
+        "n_confident": confident,
+        "n_total": denom,
+        "mistags": mistags,
+        "boundary_cases": boundary,
+        "mean_confidence": sum(confidences) / len(confidences) if confidences else 0.0,
+    }
 
 
 # ---------- 4. Goal-Criteria Fit (per-criterion attribution check) ----------

@@ -6,16 +6,16 @@ from pathlib import Path
 from typing import Any
 
 METRIC_ORDER = [
-    "tag_coverage",
-    "scenario_grounding",
     "conversation_coverage",
+    "scenario_grounding",
     "scenario_evaluability",
     "goal_criteria_fit",
-    "verification_coverage",
     "criteria_completeness",
+    "scenario_uniqueness",
+    "tag_coverage",
+    "verification_coverage",
     "field_completeness",
     "variation_coverage",
-    "scenario_uniqueness",
     "tagging_confidence",
 ]
 
@@ -167,7 +167,7 @@ def _append_drilldown(lines: list[str], name: str, r: dict) -> None:
         for p in (r.get("near_dup_examples") or [])[:30]:
             lines.append(f"  - [{p['tag']}] `{p['a']}` ↔ `{p['b']}`")
     elif name == "tagging_confidence":
-        lines.append(f"- Mean confidence: {r.get('mean_confidence', 0):.2f}")
+        lines.append(f"- Confident: {r.get('n_confident')}/{r.get('n_total')} (mean confidence {r.get('mean_confidence', 0):.2f})")
         for m in (r.get("mistags") or [])[:30]:
             lines.append(f"  - `{m['scenario']}` current={m['current']} suggested={m['suggested']} ({m['confidence']:.2f})")
         for b in (r.get("boundary_cases") or [])[:30]:

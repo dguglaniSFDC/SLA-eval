@@ -6,7 +6,7 @@ Four skills for scoring SLAgent DataPrep output end-to-end: transcript prep, tax
 |---|---|
 | [`transcript-normalize`](transcript-normalize/) | Convert raw VTT/TXT/JSON/CSV transcripts into the canonical `{id, turns:[{role, text}]}` shape. |
 | [`sla-contact-reason-eval`](sla-contact-reason-eval/) | Score a contact-reason taxonomy against Coverage, Evidence Backing, and Sibling Distinctness. |
-| [`sla-scenario-eval`](sla-scenario-eval/) | Score a scenarios file against eleven P0/P1 scenario-quality metrics (tag coverage, grounding, conversation coverage, evaluability, goal-criteria fit, verification coverage, criteria completeness, field completeness, variation, uniqueness, tagging confidence). |
+| [`sla-scenario-eval`](sla-scenario-eval/) | Score a scenarios file against eleven P0/P1 scenario-quality metrics. P0 (training-damage): conversation coverage, scenario grounding, evaluability, goal-criteria fit, criteria completeness, scenario uniqueness. P1 (polish): tag coverage, verification-criteria coverage, field completeness, variation coverage, tagging confidence. |
 | [`agentscript-eval`](agentscript-eval/) | Diff a before/after AgentScript and score the added material against seven structural + semantic metrics (use-case ownership, determinism, overfitting / industry-tied, use-case focus, subagent substance, instruction substance, action gating). |
 
 ## Quickstart — taxonomy eval

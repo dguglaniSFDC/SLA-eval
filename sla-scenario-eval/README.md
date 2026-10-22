@@ -21,19 +21,21 @@ Trigger phrases:
 
 ## Metrics
 
+P0 = training-damage; P1 = polish.
+
 | Priority | Metric | Judge? | Threshold |
 |---|---|---|---|
-| P0 | Tag coverage | — | 85% |
-| P0 | Scenario grounding | ✓ pointwise | 90% |
 | P0 | Conversation coverage (inverse of grounding) | ✓ pointwise | 80% |
+| P0 | Scenario grounding | ✓ pointwise | 90% |
 | P0 | Scenario evaluability | — (5 block rules) | 85% |
 | P0 | Goal-criteria fit (scenario↔criteria mismatches) | ✓ pointwise | 85% |
-| P0 | Verification-criteria coverage | — | 95% |
 | P0 | Criteria completeness (0–3 scale) | — | 85% |
-| P0 | Field completeness rate | — | 95% |
+| P0 | Scenario uniqueness (within-reason) | ✓ pairwise | 90% |
+| P1 | Tag coverage | — | 85% |
+| P1 | Verification-criteria coverage | — | 95% |
+| P1 | Field completeness rate | — | 95% |
 | P1 | Variation coverage (experimental) | ✓ two-stage | 85% |
-| P1 | Scenario uniqueness (within-reason) | ✓ pairwise | 90% |
-| P1 | Taxonomy tagging confidence | ✓ grounded-match | 70% |
+| P1 | Taxonomy tagging confidence (% confidently tagged) | ✓ grounded-match | 70% |
 
 See `rubrics/*.md` for exact definitions.
 

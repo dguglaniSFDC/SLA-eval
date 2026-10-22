@@ -15,16 +15,16 @@
     "variation_sim_threshold": 0.78
   },
   "thresholds": {
-    "tag_coverage": 0.85,
-    "scenario_grounding": 0.90,
     "conversation_coverage": 0.80,
+    "scenario_grounding": 0.90,
     "scenario_evaluability": 0.85,
     "goal_criteria_fit": 0.85,
-    "verification_coverage": 0.95,
     "criteria_completeness": 0.85,
+    "scenario_uniqueness": 0.90,
+    "tag_coverage": 0.85,
+    "verification_coverage": 0.95,
     "field_completeness": 0.95,
     "variation_coverage": 0.85,
-    "scenario_uniqueness": 0.90,
     "tagging_confidence": 0.70
   },
   "sensitive_patterns": [
