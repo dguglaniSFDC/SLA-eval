@@ -116,8 +116,13 @@ def main() -> int:
 
     results: dict[str, Any] = {}
 
+    any_tags = any((s.get("tags") or []) for s in scenarios)
+
     # P0 static
-    results["tag_coverage"] = tag_coverage(scenarios, reasons)
+    if any_tags:
+        results["tag_coverage"] = tag_coverage(scenarios, reasons)
+    else:
+        results["tag_coverage"] = {"skipped": True, "reason": "no tags on scenarios"}
     results["scenario_evaluability"] = evaluability(scenarios)
     results["verification_coverage"] = verification_coverage(
         scenarios, config["sensitive_patterns"], config["verification_patterns"]
@@ -129,13 +134,14 @@ def main() -> int:
 
     # Judge-based
     if args.static_only:
-        for k in ("scenario_grounding", "scenario_uniqueness", "tagging_confidence", "variation_coverage"):
+        for k in ("scenario_grounding", "scenario_uniqueness", "tagging_confidence", "variation_coverage", "goal_criteria_fit"):
             results[k] = {"skipped": True, "reason": "static-only mode"}
     else:
         import anthropic
         from judge import Judge
         from judge_metrics import (
             grounding, uniqueness, tagging_confidence, variation_coverage,
+            goal_criteria_fit,
         )
 
         client = anthropic.Anthropic()
@@ -146,11 +152,17 @@ def main() -> int:
         else:
             results["scenario_grounding"] = {"skipped": True, "reason": "no --transcripts provided"}
 
-        results["scenario_uniqueness"] = uniqueness(scenarios, judge)
-        results["tagging_confidence"] = tagging_confidence(
-            scenarios, reasons, config["tagging_confidence_floor"], judge
-        )
-        results["variation_coverage"] = variation_coverage(scenarios, reasons, judge)
+        results["goal_criteria_fit"] = goal_criteria_fit(scenarios, judge)
+
+        if any_tags:
+            results["scenario_uniqueness"] = uniqueness(scenarios, judge)
+            results["tagging_confidence"] = tagging_confidence(
+                scenarios, reasons, config["tagging_confidence_floor"], judge
+            )
+            results["variation_coverage"] = variation_coverage(scenarios, reasons, judge)
+        else:
+            for k in ("scenario_uniqueness", "tagging_confidence", "variation_coverage"):
+                results[k] = {"skipped": True, "reason": "no tags on scenarios"}
 
     write_report(results, thresholds, args.out)
     print(f"wrote {args.out}/report.md and scores.jsonl")

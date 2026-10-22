@@ -194,9 +194,10 @@ def evaluability(scenarios: list[dict]) -> dict[str, Any]:
             desc = c.get("description", "")
             name = c.get("name", "")
             fired: list[str] = []
+            soft: list[str] = []
 
             if rule_e:
-                fired.append("e_empty_anchors")
+                soft.append("e_empty_anchors")
 
             if c.get("requireToolCall"):
                 tool_name = (c.get("toolName") or "").strip()
@@ -208,7 +209,7 @@ def evaluability(scenarios: list[dict]) -> dict[str, Any]:
 
             if any(sig in desc.lower() for sig in SHARE_SIGNALS):
                 if not _agent_facts_cover(s, desc):
-                    fired.append("b_shares_undocumented_info")
+                    soft.append("b_shares_undocumented_info")
 
             if any(re.search(p, desc, flags=re.IGNORECASE) for p in CONDITIONAL_SIGNALS):
                 if not _condition_disambiguated(s, desc.lower()):
@@ -220,6 +221,8 @@ def evaluability(scenarios: list[dict]) -> dict[str, Any]:
             if fired:
                 blocked_criteria += 1
                 blocks.append({"scenario": sid, "criterion": name, "rules": fired})
+            if soft:
+                warnings.append({"scenario": sid, "criterion": name, "rules": soft})
 
         warnings.extend([{"scenario": sid, **w} for w in _tool_field_warnings(s)])
 

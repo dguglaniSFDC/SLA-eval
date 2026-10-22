@@ -157,7 +157,70 @@ def tagging_confidence(
     return {"score": score, "mistags": mistags, "boundary_cases": boundary, "mean_confidence": sum(confidences) / len(confidences) if confidences else 0.0}
 
 
-# ---------- 4. Variation Coverage (experimental) ----------
+# ---------- 4. Goal-Criteria Fit (per-criterion attribution check) ----------
+
+VALID_FIT_VERDICTS = {"fit", "out_of_scope", "mis_attached", "contradicts_goal"}
+
+
+def goal_criteria_fit(scenarios: list[dict], judge: Judge) -> dict[str, Any]:
+    total_criteria = 0
+    fit_criteria = 0
+    per_scenario: list[dict] = []
+    flagged: list[dict] = []
+    buckets = {"fit": 0, "out_of_scope": 0, "mis_attached": 0, "contradicts_goal": 0}
+
+    for s in scenarios:
+        sid = s.get("id") or "<unknown>"
+        criteria = s.get("criteria") or []
+        if not criteria:
+            continue
+
+        item = {
+            "id": sid,
+            "goal": s.get("goal"),
+            "criteria": [{"name": c.get("name"), "description": c.get("description")} for c in criteria],
+        }
+
+        verdict = judge.call(JudgeCall(
+            template="pointwise",
+            rubric="goal-criteria-fit",
+            inputs={"item_json": item, "evidence_block": "treat the goal as ground truth; evaluate each criterion"},
+        ))
+
+        verdicts = verdict.get("verdicts") or []
+        n_fit_here = 0
+        for v in verdicts:
+            total_criteria += 1
+            vlabel = str(v.get("verdict", "")).lower()
+            if vlabel not in VALID_FIT_VERDICTS:
+                vlabel = "fit"
+            buckets[vlabel] = buckets.get(vlabel, 0) + 1
+            if vlabel == "fit":
+                fit_criteria += 1
+                n_fit_here += 1
+            else:
+                flagged.append({
+                    "scenario": sid,
+                    "goal": s.get("goal"),
+                    "criterion": v.get("name"),
+                    "verdict": vlabel,
+                    "reason": v.get("reason", ""),
+                })
+
+        per_scenario.append({"scenario": sid, "n_fit": n_fit_here, "n_total": len(verdicts) or len(criteria)})
+
+    score = fit_criteria / total_criteria if total_criteria else 1.0
+    return {
+        "score": score,
+        "n_fit": fit_criteria,
+        "n_total": total_criteria,
+        "buckets": buckets,
+        "flagged": flagged,
+        "per_scenario": per_scenario,
+    }
+
+
+# ---------- 5. Variation Coverage (experimental) ----------
 
 def _simple_cluster(fingerprints: list[dict], threshold: float = 0.6) -> list[list[int]]:
     """Jaccard-based greedy clustering on `variant_axes` + `situation_summary` tokens."""

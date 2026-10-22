@@ -1,6 +1,6 @@
 # sla-scenario-eval
 
-Evaluates SLAgent DataPrep scenarios against a contact-reason taxonomy on 9 SLA metrics.
+Evaluates SLAgent DataPrep scenarios against a contact-reason taxonomy on 10 SLA metrics.
 
 Pair with `sla-contact-reason-eval` (which scores the taxonomy itself) and `transcript-normalize` (which normalizes raw call transcripts into the shape this skill ingests).
 
@@ -26,6 +26,7 @@ Trigger phrases:
 | P0 | Tag coverage | — | 85% |
 | P0 | Scenario grounding | ✓ pointwise | 90% |
 | P0 | Scenario evaluability | — (5 block rules) | 85% |
+| P0 | Goal-criteria fit (scenario↔criteria mismatches) | ✓ pointwise | 85% |
 | P0 | Verification-criteria coverage | — | 95% |
 | P0 | Criteria completeness (0–3 scale) | — | 85% |
 | P0 | Field completeness rate | — | 95% |
@@ -41,7 +42,8 @@ See `rubrics/*.md` for exact definitions.
 scenarios + reasons                        → tag_coverage, evaluability, verification_coverage,
                                              criteria_completeness, field_completeness
 + --transcripts                            → + scenario_grounding
-+ live judge (no --static-only)            → + uniqueness, variation_coverage, tagging_confidence
++ live judge (no --static-only)            → + goal_criteria_fit, uniqueness,
+                                             variation_coverage, tagging_confidence
 ```
 
 Anything missing reports SKIPPED, not FAIL.
@@ -86,6 +88,7 @@ sla-scenario-eval/
 │   ├── tag-coverage.md
 │   ├── grounding.md
 │   ├── evaluability.md
+│   ├── goal-criteria-fit.md
 │   ├── verification-coverage.md
 │   ├── criteria-completeness.md
 │   ├── field-completeness.md

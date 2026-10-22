@@ -18,6 +18,7 @@
     "tag_coverage": 0.85,
     "scenario_grounding": 0.90,
     "scenario_evaluability": 0.85,
+    "goal_criteria_fit": 0.85,
     "verification_coverage": 0.95,
     "criteria_completeness": 0.85,
     "field_completeness": 0.95,
@@ -35,7 +36,7 @@
     "match", "cross-?check", "lookup", "verif(y|ication)"
   ],
   "tagging_confidence_floor": 0.60,
-  "required_fields": ["goal", "persona", "userContextFacts", "agentContextFacts", "sampleSeeds", "criteria", "tags"],
+  "required_fields": ["goal", "persona", "userContextFacts", "agentContextFacts", "sampleSeeds", "criteria"],
   "retry": {
     "max": 3,
     "on": ["parse_error", "rate_limit", "timeout"]

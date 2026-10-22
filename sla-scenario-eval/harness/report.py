@@ -9,6 +9,7 @@ METRIC_ORDER = [
     "tag_coverage",
     "scenario_grounding",
     "scenario_evaluability",
+    "goal_criteria_fit",
     "verification_coverage",
     "criteria_completeness",
     "field_completeness",
@@ -21,6 +22,7 @@ LABELS = {
     "tag_coverage": "Tag coverage",
     "scenario_grounding": "Scenario grounding",
     "scenario_evaluability": "Scenario evaluability",
+    "goal_criteria_fit": "Goal-criteria fit",
     "verification_coverage": "Verification-criteria coverage",
     "criteria_completeness": "Criteria completeness",
     "field_completeness": "Field completeness rate",
@@ -107,9 +109,15 @@ def _append_drilldown(lines: list[str], name: str, r: dict) -> None:
             for b in blocks[:50]:
                 lines.append(f"  - `{b['scenario']}` / **{b['criterion']}** — {', '.join(b['rules'])}")
         warns = r.get("warnings") or []
-        if warns:
-            lines.append(f"- Tool-field warnings: {len(warns)}")
-            for w in warns[:20]:
+        soft_rule_warns = [w for w in warns if "rules" in w]
+        tool_warns = [w for w in warns if "tool" in w]
+        if soft_rule_warns:
+            lines.append(f"- Soft warnings (not blocking): {len(soft_rule_warns)}")
+            for w in soft_rule_warns[:20]:
+                lines.append(f"  - `{w['scenario']}` / **{w['criterion']}** — {', '.join(w['rules'])}")
+        if tool_warns:
+            lines.append(f"- Tool-field warnings: {len(tool_warns)}")
+            for w in tool_warns[:20]:
                 lines.append(f"  - `{w['scenario']}` / {w['tool']}.{w['field']} ({w['where']})")
         unanchored = r.get("unanchored_scenarios") or []
         if unanchored:
@@ -127,6 +135,19 @@ def _append_drilldown(lines: list[str], name: str, r: dict) -> None:
         under = r.get("under_specified") or []
         if under:
             lines.append(f"- Under-specified (≥3 empty fields): {', '.join(under)}")
+    elif name == "goal_criteria_fit":
+        lines.append(f"- Fit: {r.get('n_fit')}/{r.get('n_total')} criteria")
+        buckets = r.get("buckets") or {}
+        if buckets:
+            parts = [f"{k}={v}" for k, v in buckets.items() if v]
+            lines.append(f"- Verdicts: {', '.join(parts)}")
+        flagged = r.get("flagged") or []
+        if flagged:
+            lines.append(f"- Flagged criteria ({len(flagged)}):")
+            for f in flagged[:50]:
+                lines.append(
+                    f"  - `{f['scenario']}` [{f['verdict']}] **{f.get('criterion')}** — {f.get('reason', '')}"
+                )
     elif name == "scenario_grounding":
         lines.append(f"- Buckets: {r.get('buckets')}")
         for p in (r.get("per_scenario") or [])[:50]:
