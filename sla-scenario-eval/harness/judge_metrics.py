@@ -72,12 +72,24 @@ def grounding(scenarios: list[dict], transcripts: dict[str, str], judge: Judge) 
 
 # ---------- 1b. Conversation Coverage (inverse of grounding) ----------
 
+def _flatten(v: Any) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, str):
+        return v
+    if isinstance(v, dict):
+        return " ".join(_flatten(x) for x in v.values())
+    if isinstance(v, (list, tuple)):
+        return " ".join(_flatten(x) for x in v)
+    return str(v)
+
+
 def _scenario_index_text(s: dict) -> str:
     parts = [
-        s.get("goal") or "",
-        s.get("persona") or "",
-        " ".join(str(v) for v in (s.get("userContextFacts") or {}).values()),
-        " ".join(str(v) for v in (s.get("agentContextFacts") or {}).values()),
+        _flatten(s.get("goal")),
+        _flatten(s.get("persona")),
+        _flatten(s.get("userContextFacts")),
+        _flatten(s.get("agentContextFacts")),
         " ".join((c.get("name") or "") for c in s.get("criteria") or []),
     ]
     return " ".join(parts)
