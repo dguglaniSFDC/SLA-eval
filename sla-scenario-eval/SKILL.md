@@ -5,12 +5,13 @@ description: Score an SLAgent DataPrep scenarios file against P0/P1 scenario-qua
 
 # SLA Scenario Evaluation
 
-Scores one scenario set against ten metrics. Expected per-scenario shape (see `examples/scenarios-sample.json`): `tags`, `goal`, `persona`, `userContextFacts`, `agentContextFacts`, `sampleSeeds`, `criteria`, `channel`.
+Scores one scenario set against eleven metrics. Expected per-scenario shape (see `examples/scenarios-sample.json`): `tags`, `goal`, `persona`, `userContextFacts`, `agentContextFacts`, `sampleSeeds`, `criteria`, `channel`.
 
 | Priority | Metric | What it measures |
 |---|---|---|
 | P0 | **Tag Coverage** | % of taxonomy reasons with ≥1 scenario tagged to them |
 | P0 | **Scenario Grounding** | % of scenarios whose goal/persona/facts + criteria match real conversations |
+| P0 | **Conversation Coverage** | % of real conversations in the corpus represented by ≥1 scenario (inverse of grounding — catches long-tail customer behavior the scenario set never represents) |
 | P0 | **Scenario Evaluability** | % of criteria that can be fairly passed from the scenario alone (static check, 5 block rules) |
 | P0 | **Goal-Criteria Fit** | % of criteria whose descriptions describe a step that logically serves the scenario's goal (catches scenario↔criteria mismatches — criteria accidentally attached to the wrong scenario) |
 | P0 | **Verification-Criteria Coverage** | % of sensitive scenarios (invoice/credit/case/unlink/permissions) with a verification-gate criterion |
@@ -50,11 +51,11 @@ Scenario tags are matched against reasons using the `"<Category>::<Contact Reaso
 
 ### Which metrics run with what you have
 
-| You have | Tag Cov | Grounding | Evaluability | Goal-Crit Fit | Verif. Cov | Criteria Compl | Field Compl | Variation | Uniqueness | Tagging Conf |
-|---|---|---|---|---|---|---|---|---|---|---|
-| scenarios + reasons | ✓ | — | ✓ | — | ✓ | ✓ | ✓ | — | ✓ | ✓ |
-| + live judge | ✓ | — | ✓ | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ |
-| + transcripts | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| You have | Tag Cov | Grounding | Conv Cov | Evaluability | Goal-Crit Fit | Verif. Cov | Criteria Compl | Field Compl | Variation | Uniqueness | Tagging Conf |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| scenarios + reasons | ✓ | — | — | ✓ | — | ✓ | ✓ | ✓ | — | ✓ | ✓ |
+| + live judge | ✓ | — | — | ✓ | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ |
+| + transcripts | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 Missing inputs → metric is marked SKIPPED. All judge rubrics live in `rubrics/`; swap one, re-run.
 
@@ -83,8 +84,9 @@ python harness/run.py --input ./runs/<run-name> --static-only
 
 ## Design principles
 
-- **Static vs judge**: five metrics (Tag Coverage, Evaluability, Verification Coverage, Criteria Completeness, Field Completeness) run with zero LLM calls. Judge is only used where semantic reasoning is required (Grounding, Goal-Criteria Fit, Variation, Uniqueness, Tagging Confidence).
+- **Static vs judge**: five metrics (Tag Coverage, Evaluability, Verification Coverage, Criteria Completeness, Field Completeness) run with zero LLM calls. Judge is only used where semantic reasoning is required (Grounding, Conversation Coverage, Goal-Criteria Fit, Variation, Uniqueness, Tagging Confidence).
 - **Goal-Criteria Fit** uses the scenario's `goal` as ground truth and judges each criterion as `fit` / `out_of_scope` / `mis_attached` / `contradicts_goal`. Catches the pipeline bug where a well-written criterion is bolted onto the wrong scenario (e.g. a "retrieve order to support the price adjustment request" criterion attached to a cancel-refund scenario). See `rubrics/goal-criteria-fit.md`.
+- **Conversation Coverage is the inverse of Grounding.** Grounding iterates scenarios → shortlists transcripts → asks "is this scenario real?". Coverage iterates conversations → shortlists scenarios → asks "is this conversation represented?". Both are needed: a scenario set that passes grounding at 100% can still cover <50% of the corpus if it only samples the easy cases. Threshold is intentionally lower (80% vs grounding's 90%) because the long tail is expected.
 - **Evaluability has 5 explicit block rules** (listed in `rubrics/evaluability.md`). A sixth rule — tool-input/output field mismatch — reports as a warning, not a block.
 - **Sensitive scenarios** are detected by regex over goal/criteria descriptions (configurable in `config.json → sensitive_patterns`). Verification-gate criteria are detected by regex over criterion name/description (`verification_patterns`).
 - **Rubrics in markdown**, one judge template per shape (same `pointwise.md`/`pairwise.md`/`grounded-match.md` as `sla-contact-reason-eval`).

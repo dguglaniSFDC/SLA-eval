@@ -134,14 +134,17 @@ def main() -> int:
 
     # Judge-based
     if args.static_only:
-        for k in ("scenario_grounding", "scenario_uniqueness", "tagging_confidence", "variation_coverage", "goal_criteria_fit"):
+        for k in (
+            "scenario_grounding", "conversation_coverage", "scenario_uniqueness",
+            "tagging_confidence", "variation_coverage", "goal_criteria_fit",
+        ):
             results[k] = {"skipped": True, "reason": "static-only mode"}
     else:
         import anthropic
         from judge import Judge
         from judge_metrics import (
-            grounding, uniqueness, tagging_confidence, variation_coverage,
-            goal_criteria_fit,
+            grounding, conversation_coverage, uniqueness, tagging_confidence,
+            variation_coverage, goal_criteria_fit,
         )
 
         client = anthropic.Anthropic()
@@ -149,8 +152,10 @@ def main() -> int:
 
         if transcripts:
             results["scenario_grounding"] = grounding(scenarios, transcripts, judge)
+            results["conversation_coverage"] = conversation_coverage(scenarios, transcripts, judge)
         else:
             results["scenario_grounding"] = {"skipped": True, "reason": "no --transcripts provided"}
+            results["conversation_coverage"] = {"skipped": True, "reason": "no --transcripts provided"}
 
         results["goal_criteria_fit"] = goal_criteria_fit(scenarios, judge)
 

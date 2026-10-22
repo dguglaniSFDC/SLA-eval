@@ -70,6 +70,82 @@ def grounding(scenarios: list[dict], transcripts: dict[str, str], judge: Judge) 
     return {"score": score, "buckets": bucket, "per_scenario": results}
 
 
+# ---------- 1b. Conversation Coverage (inverse of grounding) ----------
+
+def _scenario_index_text(s: dict) -> str:
+    parts = [
+        s.get("goal") or "",
+        s.get("persona") or "",
+        " ".join(str(v) for v in (s.get("userContextFacts") or {}).values()),
+        " ".join(str(v) for v in (s.get("agentContextFacts") or {}).values()),
+        " ".join((c.get("name") or "") for c in s.get("criteria") or []),
+    ]
+    return " ".join(parts)
+
+
+def conversation_coverage(
+    scenarios: list[dict], transcripts: dict[str, str], judge: Judge, k: int = 5
+) -> dict[str, Any]:
+    """For each conversation, judge whether any scenario covers its intent + flow.
+
+    Inverse of `grounding`: that one asks "does each scenario trace to a conversation",
+    this one asks "does each conversation trace to a scenario". Catches long-tail
+    customer behavior the scenario set never represents.
+    """
+    scenario_docs = [(s.get("id") or f"scn_{i}", _scenario_index_text(s)) for i, s in enumerate(scenarios)]
+    scenario_by_id = {sid: s for (sid, _), s in zip(scenario_docs, scenarios)}
+
+    results: list[dict] = []
+    bucket = {"covered": 0, "partial": 0, "uncovered": 0}
+    uncovered_examples: list[dict] = []
+
+    for tid, text in transcripts.items():
+        query = text[:2000]
+        shortlist = _bm25ish_rank(query, scenario_docs, k=k)
+        if not shortlist:
+            results.append({"conversation": tid, "verdict": "uncovered", "reason": "no scenario keyword overlap"})
+            bucket["uncovered"] += 1
+            uncovered_examples.append({"conversation": tid, "reason": "no keyword overlap"})
+            continue
+
+        candidates_block = "\n\n---\n\n".join(
+            f"[{sid}]\n{json.dumps({'goal': scenario_by_id[sid].get('goal'), 'persona': scenario_by_id[sid].get('persona'), 'criteria': [c.get('name') for c in scenario_by_id[sid].get('criteria') or []]}, indent=2)}"
+            for sid, _ in shortlist
+        )
+
+        verdict = judge.call(JudgeCall(
+            template="pointwise",
+            rubric="conversation-coverage",
+            inputs={
+                "item_json": {"conversation_id": tid, "transcript": text[:3000]},
+                "evidence_block": "CANDIDATE SCENARIOS:\n\n" + candidates_block,
+            },
+        ))
+        v = str(verdict.get("score", "uncovered")).lower()
+        if v not in bucket:
+            v = "uncovered"
+        bucket[v] += 1
+        row = {
+            "conversation": tid,
+            "verdict": v,
+            "scenario_match_id": verdict.get("scenario_match_id"),
+            "reason": verdict.get("reason", ""),
+        }
+        results.append(row)
+        if v == "uncovered":
+            uncovered_examples.append(row)
+
+    total = sum(bucket.values())
+    score = (bucket["covered"] + 0.5 * bucket["partial"]) / total if total else 0.0
+    return {
+        "score": score,
+        "buckets": bucket,
+        "n_total": total,
+        "per_conversation": results,
+        "uncovered_examples": uncovered_examples[:50],
+    }
+
+
 # ---------- 2. Uniqueness (pairwise, within-reason) ----------
 
 def _bucket_by_reason(scenarios: list[dict]) -> dict[str, list[dict]]:

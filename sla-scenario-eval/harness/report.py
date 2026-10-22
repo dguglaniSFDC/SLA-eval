@@ -8,6 +8,7 @@ from typing import Any
 METRIC_ORDER = [
     "tag_coverage",
     "scenario_grounding",
+    "conversation_coverage",
     "scenario_evaluability",
     "goal_criteria_fit",
     "verification_coverage",
@@ -21,6 +22,7 @@ METRIC_ORDER = [
 LABELS = {
     "tag_coverage": "Tag coverage",
     "scenario_grounding": "Scenario grounding",
+    "conversation_coverage": "Conversation coverage",
     "scenario_evaluability": "Scenario evaluability",
     "goal_criteria_fit": "Goal-criteria fit",
     "verification_coverage": "Verification-criteria coverage",
@@ -153,6 +155,13 @@ def _append_drilldown(lines: list[str], name: str, r: dict) -> None:
         for p in (r.get("per_scenario") or [])[:50]:
             if p["verdict"] != "grounded":
                 lines.append(f"  - `{p['scenario']}` — {p['verdict']}")
+    elif name == "conversation_coverage":
+        lines.append(f"- Buckets: {r.get('buckets')}; total conversations: {r.get('n_total')}")
+        uncov = r.get("uncovered_examples") or []
+        if uncov:
+            lines.append(f"- Uncovered conversations ({len(uncov)} shown):")
+            for u in uncov[:50]:
+                lines.append(f"  - `{u['conversation']}` — {u.get('reason', '')}")
     elif name == "scenario_uniqueness":
         lines.append(f"- Distinct: {r.get('n_distinct')}; near-duplicate: {r.get('n_near_duplicate')}")
         for p in (r.get("near_dup_examples") or [])[:30]:

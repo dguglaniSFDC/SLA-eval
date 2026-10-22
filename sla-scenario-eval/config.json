@@ -17,6 +17,7 @@
   "thresholds": {
     "tag_coverage": 0.85,
     "scenario_grounding": 0.90,
+    "conversation_coverage": 0.80,
     "scenario_evaluability": 0.85,
     "goal_criteria_fit": 0.85,
     "verification_coverage": 0.95,
