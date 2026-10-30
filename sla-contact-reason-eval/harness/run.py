@@ -154,7 +154,12 @@ def main():
     from report import write_report
     client = anthropic.Anthropic()
     cache_dir = (run_dir / config["cache"]["dir"]) if config["cache"]["judge_calls"] else None
-    judge = Judge(client=client, model=config["model"]["judge"], cache_dir=cache_dir)
+    judge = Judge(
+        client=client,
+        model=config["model"]["judge"],
+        cache_dir=cache_dir,
+        temperature=float(config.get("temperature", 0.0)),
+    )
     embedder = make_embedder(config)
 
     if args.bootstrap_descriptions:

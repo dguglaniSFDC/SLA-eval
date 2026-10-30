@@ -85,7 +85,10 @@ class Judge:
         key = _cache_key(call)
         cache_file = (self.cache_dir / f"{key}.json") if self.cache_dir else None
         if cache_file and cache_file.exists():
-            return json.loads(cache_file.read_text())
+            try:
+                return json.loads(cache_file.read_text())
+            except json.JSONDecodeError:
+                cache_file.unlink(missing_ok=True)
 
         rubric_body = _load(RUBRICS_DIR / f"{call.rubric}.md")
         bindings = {"rubric_body": rubric_body, **call.inputs}

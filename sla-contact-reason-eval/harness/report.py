@@ -98,8 +98,8 @@ def write_report(run_dir: Path, results: dict[str, dict]) -> None:
             lines.append(f"- Distinct: {d['distinct']}")
             if d["merge_candidates"]:
                 lines.append("")
-                lines.append("### Merge candidates")
-                for ex in d["merge_candidates"][:20]:
+                lines.append(f"### Merge candidates ({len(d['merge_candidates'])} total)")
+                for ex in d["merge_candidates"]:
                     examples = ex.get("overlap_examples") or []
                     ex_line = "; ".join(examples[:2]) if examples else ""
                     lines.append(

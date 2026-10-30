@@ -74,10 +74,11 @@ def _extract_json(text: str) -> dict[str, Any]:
 
 
 class Judge:
-    def __init__(self, client: anthropic.Anthropic, model: str, cache_dir: Path | None):
+    def __init__(self, client: anthropic.Anthropic, model: str, cache_dir: Path | None, temperature: float = 0.0):
         self.client = client
         self.model = model
         self.cache_dir = cache_dir
+        self.temperature = temperature
         if cache_dir:
             cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -98,6 +99,7 @@ class Judge:
                     model=self.model,
                     max_tokens=1024,
                     messages=[{"role": "user", "content": prompt}],
+                    extra_body={"temperature": self.temperature},
                 )
                 break
             except (anthropic.RateLimitError, anthropic.APIStatusError) as exc:
