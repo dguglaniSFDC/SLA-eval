@@ -9,10 +9,20 @@
     "sampleSeeds": [{"values": {"invoiceId": "INV-0042"}}],
     "criteria": [
       {"name": "Verify customer identity", "description": "Verify the customer's identity before any account action", "requireToolCall": false},
-      {"name": "Issue refund", "description": "Process the refund for the duplicate charge", "requireToolCall": true, "toolName": "issueRefund"}
-    ],
-    "suggestedToolcalls": [
-      {"tool": {"name": "issueRefund", "inputSchema": {"properties": {"invoiceId": {"type": "string"}, "amount": {"type": "number"}}}}}
+      {
+        "name": "Issue refund",
+        "description": "Process the refund for the duplicate charge",
+        "requireToolCall": true,
+        "toolName": "issueRefund",
+        "suggestedToolcalls": [
+          {
+            "name": "issueRefund",
+            "description": "Issue a refund against an invoice",
+            "input": [{"name": "invoiceId", "type": "string"}, {"name": "amount", "type": "number"}],
+            "output": [{"name": "refundId", "type": "string"}]
+          }
+        ]
+      }
     ],
     "channel": "chat"
   },
@@ -21,16 +31,26 @@
     "tags": ["Account::Password Reset"],
     "goal": "Guide a locked-out customer through a password reset",
     "persona": {"attributes": {"archetype": "non_technical_senior"}},
-    "userContextFacts": {"email": "user@example.com"},
-    "agentContextFacts": {"resetLinkTtl": "30 minutes"},
+    "userContextFacts": {"email": "user@example.com", "resetFailed": false},
+    "agentContextFacts": {"resetLinkTtl": "30 minutes", "phoneResetFallback": "available"},
     "sampleSeeds": [{"values": {"email": "user@example.com"}}],
     "criteria": [
       {"name": "Verify customer identity", "description": "Confirm identity via email on file", "requireToolCall": false},
-      {"name": "Send reset link", "description": "Send the password reset link", "requireToolCall": true, "toolName": "sendResetLink"},
-      {"name": "Confirm receipt", "description": "If the reset fails, offer phone-based reset", "requireToolCall": false}
-    ],
-    "suggestedToolcalls": [
-      {"tool": {"name": "sendResetLink", "inputSchema": {"properties": {"email": {"type": "string"}}}}}
+      {
+        "name": "Send reset link",
+        "description": "Send the password reset link",
+        "requireToolCall": true,
+        "toolName": "sendResetLink",
+        "suggestedToolcalls": [
+          {
+            "name": "sendResetLink",
+            "description": "Email a time-limited reset link to the user",
+            "input": [{"name": "email", "type": "string"}],
+            "output": [{"name": "sent", "type": "boolean"}]
+          }
+        ]
+      },
+      {"name": "Confirm receipt", "description": "When resetFailed is true, offer the phoneResetFallback option", "requireToolCall": false}
     ],
     "channel": "chat"
   }

@@ -17,8 +17,9 @@ A criterion is **blocked** (not passable) if ANY of these five rules fire:
 
 ### Block rules (hard — count against the score)
 
-**a.** `requireToolCall == true` AND the scenario has no `suggestedToolcalls` entry defining that tool.
-  - A tool with the same name attached to a *different* criterion counts (tools are scenario-scope, not criterion-scope).
+**a.** `requireToolCall == true` AND no `suggestedToolcalls` entry defines that tool.
+  - Tools can be declared inline on the criterion (`criterion.suggestedToolcalls`) OR at the scenario root (`scenario.suggestedToolcalls`); both locations are checked.
+  - When the criterion omits `toolName`, any tool defined on either the criterion or the scenario satisfies the rule.
 
 **b.** Criterion description asks the agent to share information (price, status, cost, order number, policy number, appointment time, delivery ETA, coverage details, fee, availability, etc.) that is NOT present as a key in `agentContextFacts`.
   - Signal phrases: "provide", "communicate", "share", "explain", "offer", "inform", "notify".

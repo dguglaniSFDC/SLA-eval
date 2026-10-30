@@ -106,15 +106,30 @@ def tag_coverage(scenarios: list[dict], reasons: list[dict]) -> dict[str, Any]:
 
 # ---------- 2. Evaluability (5 block rules + warnings) ----------
 
-def _has_tool_defined(scenario: dict, tool_name: str) -> bool:
+def _iter_tool_defs(scenario: dict, criterion: dict | None = None):
+    """Yield tool definitions from either shape:
+       - scenario-level: scenario.suggestedToolcalls[*].tool  (nested)
+       - criterion-level: criterion.suggestedToolcalls[*]      (flat)
+    """
+    if criterion is not None:
+        for stc in criterion.get("suggestedToolcalls") or []:
+            if isinstance(stc, dict):
+                yield stc.get("tool") or stc
     for stc in scenario.get("suggestedToolcalls") or []:
-        tool = stc.get("tool") or {}
+        if isinstance(stc, dict):
+            yield stc.get("tool") or stc
+
+
+def _has_tool_defined(scenario: dict, tool_name: str, criterion: dict | None = None) -> bool:
+    for tool in _iter_tool_defs(scenario, criterion):
         if (tool.get("name") or "").lower() == (tool_name or "").lower():
             return True
     return False
 
 
-def _any_tool_defined(scenario: dict) -> bool:
+def _any_tool_defined(scenario: dict, criterion: dict | None = None) -> bool:
+    if criterion is not None and (criterion.get("suggestedToolcalls") or []):
+        return True
     return bool(scenario.get("suggestedToolcalls"))
 
 
@@ -156,8 +171,10 @@ def _tool_field_warnings(scenario: dict) -> list[dict]:
         *((scenario.get("agentContextFacts") or {}).keys()),
     ]
     merged_keys_l = [k.lower() for k in merged_keys]
-    for stc in scenario.get("suggestedToolcalls") or []:
-        tool = stc.get("tool") or {}
+    tools = list(_iter_tool_defs(scenario))
+    for c in scenario.get("criteria") or []:
+        tools.extend(_iter_tool_defs({}, c))
+    for tool in tools:
         name = tool.get("name", "")
         for schema_key in ("inputSchema", "outputSchema"):
             schema = tool.get(schema_key) or {}
@@ -202,9 +219,9 @@ def evaluability(scenarios: list[dict]) -> dict[str, Any]:
             if c.get("requireToolCall"):
                 tool_name = (c.get("toolName") or "").strip()
                 if tool_name:
-                    if not _has_tool_defined(s, tool_name):
+                    if not _has_tool_defined(s, tool_name, c):
                         fired.append("a_missing_tool_definition")
-                elif not _any_tool_defined(s):
+                elif not _any_tool_defined(s, c):
                     fired.append("a_missing_tool_definition")
 
             if any(sig in desc.lower() for sig in SHARE_SIGNALS):
@@ -289,7 +306,11 @@ def criteria_completeness(
 
         per_criterion = []
         for c in criteria:
-            tool_ok = (not c.get("requireToolCall")) or _has_tool_defined(s, (c.get("toolName") or "").strip())
+            if not c.get("requireToolCall"):
+                tool_ok = True
+            else:
+                tn = (c.get("toolName") or "").strip()
+                tool_ok = _has_tool_defined(s, tn, c) if tn else _any_tool_defined(s, c)
             outcome_ok = any(v in _text_blob(c) for v in OUTCOME_VERBS)
             if not tool_ok:
                 fail_tool += 1

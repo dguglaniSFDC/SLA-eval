@@ -32,6 +32,35 @@ P0 catches "this will break training"; P1 catches "this has rough edges but is u
   conversations/              # normalized transcripts (use transcript-normalize)
 ```
 
+### Scenario shape
+
+Each scenario is `{tags, goal, persona, userContextFacts, agentContextFacts, sampleSeeds, criteria, channel}`. Tools are declared **inline on each criterion** that needs one, under `suggestedToolcalls`:
+
+```json
+{
+  "id": "s001",
+  "goal": "...",
+  "criteria": [
+    {
+      "name": "Issue refund",
+      "description": "Process the refund for the duplicate charge",
+      "requireToolCall": true,
+      "toolName": "issueRefund",
+      "suggestedToolcalls": [
+        {
+          "name": "issueRefund",
+          "description": "Issue a refund against an invoice",
+          "input":  [{"name": "invoiceId", "type": "string"}, {"name": "amount", "type": "number"}],
+          "output": [{"name": "refundId",  "type": "string"}]
+        }
+      ]
+    }
+  ]
+}
+```
+
+See [`examples/scenarios-sample.json`](examples/scenarios-sample.json) for a full example.
+
 ### Reasons — accepted shapes
 
 **1. CSV** (`reasons.csv`, header required):
