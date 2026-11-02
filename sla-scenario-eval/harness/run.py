@@ -90,6 +90,10 @@ def main() -> int:
     ap.add_argument("--transcripts", type=Path, default=None, help="directory of normalized transcripts")
     ap.add_argument("--out", type=Path, default=SKILL_ROOT / "runs" / "latest")
     ap.add_argument("--static-only", action="store_true", help="skip judge-backed metrics")
+    ap.add_argument("--sla-eligible-only", action="store_true",
+                    help="when scoring conversation coverage, drop convs that are UNRESOLVED, "
+                         "NOT_ACTIONABLE, or pure knowledge-lookup from the denominator. "
+                         "Only RESOLVED convs with a backend/mutating tool call count.")
     ap.add_argument("--dry-run", action="store_true", help="validate inputs and exit")
     ap.add_argument("--model", default=os.environ.get("ANTHROPIC_MODEL", "claude-opus-4-7"))
     ap.add_argument("--cache-dir", type=Path, default=SKILL_ROOT / ".cache")
@@ -152,7 +156,9 @@ def main() -> int:
 
         if transcripts:
             results["scenario_grounding"] = grounding(scenarios, transcripts, judge)
-            results["conversation_coverage"] = conversation_coverage(scenarios, transcripts, judge)
+            results["conversation_coverage"] = conversation_coverage(
+                scenarios, transcripts, judge, sla_eligible_only=args.sla_eligible_only
+            )
         else:
             results["scenario_grounding"] = {"skipped": True, "reason": "no --transcripts provided"}
             results["conversation_coverage"] = {"skipped": True, "reason": "no --transcripts provided"}

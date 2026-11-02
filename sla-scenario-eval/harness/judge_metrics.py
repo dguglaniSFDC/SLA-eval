@@ -95,15 +95,65 @@ def _scenario_index_text(s: dict) -> str:
     return " ".join(parts)
 
 
+def classify_sla_eligibility(transcripts: dict[str, str], judge: Judge) -> dict[str, dict]:
+    """Classify each conversation as sla_eligible (RESOLVED + backend action) or ineligible.
+
+    SLA scenarios drive tool-call-based resolutions. Convos that are UNRESOLVED, NOT_ACTIONABLE,
+    or pure knowledge-lookup/how-to guidance don't match that shape and shouldn't count
+    against Conversation Coverage. See rubrics/conversation-eligibility.md.
+    """
+    out: dict[str, dict] = {}
+    for tid, text in transcripts.items():
+        verdict = judge.call(JudgeCall(
+            template="pointwise",
+            rubric="conversation-eligibility",
+            inputs={
+                "item_json": {"conversation_id": tid, "transcript": text[:3000]},
+                "evidence_block": "",
+            },
+        ))
+        score = str(verdict.get("score", "ineligible")).lower()
+        if score not in {"sla_eligible", "ineligible"}:
+            score = "ineligible"
+        out[tid] = {
+            "eligibility": score,
+            "resolution": verdict.get("resolution"),
+            "action_type": verdict.get("action_type"),
+            "reason": verdict.get("reason", ""),
+        }
+    return out
+
+
 def conversation_coverage(
-    scenarios: list[dict], transcripts: dict[str, str], judge: Judge, k: int = 5
+    scenarios: list[dict],
+    transcripts: dict[str, str],
+    judge: Judge,
+    k: int = 5,
+    sla_eligible_only: bool = False,
 ) -> dict[str, Any]:
     """For each conversation, judge whether any scenario covers its intent + flow.
 
     Inverse of `grounding`: that one asks "does each scenario trace to a conversation",
     this one asks "does each conversation trace to a scenario". Catches long-tail
     customer behavior the scenario set never represents.
+
+    When `sla_eligible_only=True`, classify each conv first and drop ineligible ones
+    (UNRESOLVED / NOT_ACTIONABLE / KNOWLEDGE_ONLY) from the denominator. See
+    rubrics/conversation-eligibility.md for the eligibility rule.
     """
+    eligibility: dict[str, dict] = {}
+    dropped: list[dict] = []
+    if sla_eligible_only:
+        eligibility = classify_sla_eligibility(transcripts, judge)
+        kept: dict[str, str] = {}
+        for tid, text in transcripts.items():
+            cls = eligibility.get(tid, {})
+            if cls.get("eligibility") == "sla_eligible":
+                kept[tid] = text
+            else:
+                dropped.append({"conversation": tid, **cls})
+        transcripts = kept
+
     scenario_docs = [(s.get("id") or f"scn_{i}", _scenario_index_text(s)) for i, s in enumerate(scenarios)]
     scenario_by_id = {sid: s for (sid, _), s in zip(scenario_docs, scenarios)}
 
@@ -149,13 +199,18 @@ def conversation_coverage(
 
     total = sum(bucket.values())
     score = (bucket["covered"] + 0.5 * bucket["partial"]) / total if total else 0.0
-    return {
+    out = {
         "score": score,
         "buckets": bucket,
         "n_total": total,
         "per_conversation": results,
         "uncovered_examples": uncovered_examples[:50],
     }
+    if sla_eligible_only:
+        out["sla_eligible_only"] = True
+        out["n_dropped_ineligible"] = len(dropped)
+        out["dropped_ineligible"] = dropped[:50]
+    return out
 
 
 # ---------- 2. Uniqueness (pairwise, within-reason) ----------

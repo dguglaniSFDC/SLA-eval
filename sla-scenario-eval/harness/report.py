@@ -156,12 +156,26 @@ def _append_drilldown(lines: list[str], name: str, r: dict) -> None:
             if p["verdict"] != "grounded":
                 lines.append(f"  - `{p['scenario']}` — {p['verdict']}")
     elif name == "conversation_coverage":
+        if r.get("sla_eligible_only"):
+            n_dropped = r.get("n_dropped_ineligible", 0)
+            lines.append(
+                f"- SLA-eligible-only mode: scored over {r.get('n_total')} eligible conversations "
+                f"({n_dropped} dropped as UNRESOLVED / NOT_ACTIONABLE / KNOWLEDGE_ONLY)"
+            )
         lines.append(f"- Buckets: {r.get('buckets')}; total conversations: {r.get('n_total')}")
         uncov = r.get("uncovered_examples") or []
         if uncov:
             lines.append(f"- Uncovered conversations ({len(uncov)} shown):")
             for u in uncov[:50]:
                 lines.append(f"  - `{u['conversation']}` — {u.get('reason', '')}")
+        dropped = r.get("dropped_ineligible") or []
+        if dropped:
+            lines.append(f"- Dropped as SLA-ineligible ({len(dropped)} shown):")
+            for d in dropped[:50]:
+                lines.append(
+                    f"  - `{d['conversation']}` — {d.get('resolution', '?')}"
+                    f" / {d.get('action_type', '?')} — {d.get('reason', '')}"
+                )
     elif name == "scenario_uniqueness":
         lines.append(f"- Distinct: {r.get('n_distinct')}; near-duplicate: {r.get('n_near_duplicate')}")
         for p in (r.get("near_dup_examples") or [])[:30]:
