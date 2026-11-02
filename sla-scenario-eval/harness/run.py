@@ -68,10 +68,11 @@ def load_transcripts(dir_path: Path | None) -> dict[str, str]:
         if p.is_file() and p.suffix.lower() in {".txt", ".md", ".json"}:
             if p.suffix.lower() == ".json":
                 data = json.loads(p.read_text())
-                if isinstance(data, list):
+                turns = data if isinstance(data, list) else (data.get("turns") or [])
+                if turns:
                     text = "\n".join(
                         f"{t.get('speaker') or t.get('role') or ''}: {t.get('text') or ''}"
-                        for t in data
+                        for t in turns
                     )
                 else:
                     text = p.read_text()
