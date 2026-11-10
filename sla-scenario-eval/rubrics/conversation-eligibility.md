@@ -25,6 +25,13 @@ Everything else is **ineligible**:
 3. Did completion require a backend action (configure, correct, create, update, apply, run)? If no → `KNOWLEDGE_ONLY`.
 4. Otherwise → `sla_eligible`.
 
+## Reading the transcript — common pitfalls
+
+- **The last turn is often a system/auto-timeout line, not the agent giving up.** Transcripts frequently end with `"Looks like you may have stepped away for a moment. Please note this chat session will end in [DATE]."` or similar auto-generated messages. These are session-end boilerplate — they do NOT invalidate a resolution that occurred earlier in the transcript. If the customer confirmed the fix worked before the auto-timeout, the convo IS resolved.
+- **Customer confirmation is the resolution signal, not the final turn.** Look for the customer saying "it works now", "they all show up", "that fixed it", "thanks that worked", etc. If that signal is present and the agent-side action preceded it, the convo is RESOLVED — regardless of whether the agent closed with pleasantries or the session timed out afterward.
+- **Agent-side first-person backend actions are tool calls, even without a UI shown.** When the agent says "let me take a look and see if I can correct that on my end" / "I was able to get it corrected on my end" / "I've gone ahead and updated it" / "I pushed that through", those are backend actions (BACKEND_ACTION), not knowledge-lookup. Pair with a customer confirmation to classify as `sla_eligible`.
+- **"Click here, then click there" is KNOWLEDGE_ONLY even if the customer confirms it worked.** The *customer* did the backend action; the agent only provided guidance. SLA scenarios automate agent-side actions, not customer-side click-throughs.
+
 ## Output
 
 Return STRICT JSON:
@@ -44,6 +51,12 @@ Return STRICT JSON:
 
 Conversation: Customer says their order was double-charged. Agent verifies the duplicate charge in the system, refunds one of the charges, confirms refund processed. Customer thanks and leaves satisfied.
 Output: `{"score": "sla_eligible", "resolution": "RESOLVED", "action_type": "BACKEND_ACTION", "reason": "agent processed refund via system — backend action, fully resolved"}`
+
+### sla_eligible — EdTech backend config fix (auto-timeout at end)
+
+Conversation: Customer reports missing Manage Columns options in Performance Matters. Agent: "Let me take a look and see if I can correct that on my end for you." Agent then: "I believe I was able to get it corrected on my end. Please refresh the page and see if the expected options show up now." Customer: "they all show up now! thank you". Agent: "Perfect! I am happy to help!" Then: `"Looks like you may have stepped away for a moment. Please note this chat session will end in [DATE]."` (auto-generated session-timeout line).
+Output: `{"score": "sla_eligible", "resolution": "RESOLVED", "action_type": "BACKEND_ACTION", "reason": "agent corrected the configuration server-side; customer confirmed fix worked before auto-timeout"}`
+Note: the auto-timeout line is boilerplate, NOT a sign of unresolved state. The resolution signal is the customer's "they all show up now!" confirmation.
 
 ### ineligible — knowledge lookup
 
