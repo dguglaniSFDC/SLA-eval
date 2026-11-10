@@ -128,6 +128,9 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Plan only, no LLM calls")
     parser.add_argument("--bootstrap-descriptions", action="store_true",
                         help="If reasons have no descriptions, have the judge write them from retrieved transcripts first.")
+    parser.add_argument("--labels-only", action="store_true",
+                        help="Score Sibling Distinctness on labels alone — strip descriptions before judging. "
+                             "Answers 'do the names alone look distinct?' and is incompatible with --bootstrap-descriptions.")
     args = parser.parse_args()
 
     run_dir = Path(args.input).resolve()
@@ -162,6 +165,9 @@ def main():
     )
     embedder = make_embedder(config)
 
+    if args.bootstrap_descriptions and args.labels_only:
+        parser.error("--bootstrap-descriptions and --labels-only are mutually exclusive.")
+
     if args.bootstrap_descriptions:
         taxonomy = bootstrap_descriptions(taxonomy, conversations, judge, embedder, config)
         (run_dir / "taxonomy.bootstrapped.json").write_text(json.dumps(taxonomy, indent=2))
@@ -187,7 +193,12 @@ def main():
                 "reason": "no parent_id on any reason — provide full taxonomy.json"},
                 "priority": "P1", "threshold": config["thresholds"]["sibling_distinctness"]}
         else:
-            score, details = sibling_distinctness(taxonomy, judge, config)
+            tx_for_sibling = taxonomy
+            if args.labels_only:
+                tx_for_sibling = {"reasons": [{**r, "description": ""} for r in taxonomy["reasons"]]}
+            score, details = sibling_distinctness(tx_for_sibling, judge, config)
+            if args.labels_only:
+                details["mode"] = "labels_only"
             results["sibling_distinctness"] = {"score": score, "details": details, "priority": "P1",
                                                 "threshold": config["thresholds"]["sibling_distinctness"]}
 

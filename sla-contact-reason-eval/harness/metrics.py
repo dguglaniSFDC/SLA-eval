@@ -164,7 +164,18 @@ def sibling_distinctness(taxonomy, judge: Judge, config) -> tuple[float, dict]:
                 "a_name": a["name"], "b_name": b["name"], **verdict}
 
     results = _parallel(eval_pair, pairs, config["concurrency"])
-    distinct = sum(1 for r in results if r.get("verdict") == "distinct")
-    overlapping = [r for r in results if r.get("verdict") == "overlapping"]
-    score = distinct / len(results) if results else 1.0
-    return score, {"pairs": len(results), "distinct": distinct, "merge_candidates": overlapping}
+    under_defined_pairs = [r for r in results if r.get("under_defined")]
+    scored = [r for r in results if not r.get("under_defined")]
+    distinct = sum(1 for r in scored if r.get("verdict") == "distinct")
+    overlapping = [r for r in scored if r.get("verdict") == "overlapping"]
+    denom = len(scored) if scored else 1
+    score = distinct / denom
+    under_defined_labels = sorted({r["under_defined"] for r in under_defined_pairs})
+    return score, {
+        "pairs": len(results),
+        "scored_pairs": len(scored),
+        "distinct": distinct,
+        "merge_candidates": overlapping,
+        "under_defined_pairs": len(under_defined_pairs),
+        "under_defined_labels": under_defined_labels,
+    }

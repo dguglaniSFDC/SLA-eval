@@ -49,6 +49,8 @@ A directory with:
 
 The harness auto-generates slug IDs and empty descriptions when only names are provided. Evidence Backing works on names alone but gives sharper results with descriptions — pass `--bootstrap-descriptions` to have the judge write one-line descriptions from the top-K retrieved transcripts before scoring.
 
+For Sibling Distinctness specifically, you can also score **labels only** by passing `--labels-only` — the harness strips descriptions before judging, so the score answers "do the sibling names alone look distinct to a human router?" Mutually exclusive with `--bootstrap-descriptions`.
+
 ### Which metrics run with what you have
 
 | You have | Coverage | Evidence Backing | Sibling Distinctness |
@@ -96,6 +98,9 @@ python harness/run.py --input ./runs/<run-name> --bootstrap-descriptions
 
 # Single metric for iteration
 python harness/run.py --input ./runs/<run-name> --metric coverage
+
+# Score Sibling Distinctness on labels alone (descriptions stripped before judging)
+python harness/run.py --input ./runs/<run-name> --metric sibling_distinctness --labels-only
 
 # Dry-run (no LLM calls, just show plan + cost estimate)
 python harness/run.py --input ./runs/<run-name> --dry-run

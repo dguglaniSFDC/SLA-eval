@@ -94,18 +94,35 @@ def write_report(run_dir: Path, results: dict[str, dict]) -> None:
                         f"{ex.get('reason', '')[:200]}"
                     )
         elif metric == "sibling_distinctness":
-            lines.append(f"- Sibling pairs evaluated: {d['pairs']}")
-            lines.append(f"- Distinct: {d['distinct']}")
+            total_pairs = d.get("pairs", 0)
+            scored = d.get("scored_pairs", total_pairs)
+            under_def_n = d.get("under_defined_pairs", 0)
+            mode = d.get("mode")
+            if mode:
+                lines.append(f"- Mode: `{mode}`")
+            lines.append(f"- Sibling pairs enumerated: {total_pairs}")
+            lines.append(f"- Scored: {scored}  (under-defined excluded: {under_def_n})")
+            lines.append(f"- Distinct: {d['distinct']}  /  Overlapping: {len(d['merge_candidates'])}")
+            if d.get("under_defined_labels"):
+                lines.append("")
+                lines.append(f"### Under-defined labels ({len(d['under_defined_labels'])})")
+                lines.append("These labels could not be given both an `includes` and `excludes` scope. Fix the label before scoring them against siblings — this is a labeling problem, not a sibling-overlap problem.")
+                lines.append("")
+                for name in d["under_defined_labels"]:
+                    lines.append(f"- {name}")
             if d["merge_candidates"]:
                 lines.append("")
-                lines.append(f"### Merge candidates ({len(d['merge_candidates'])} total)")
+                lines.append(f"### Merge candidates — strict overlap ({len(d['merge_candidates'])} pairs)")
+                lines.append("Passed the handling-difference test: these pairs route to the same owner / tool / resolution.")
+                lines.append("")
                 for ex in d["merge_candidates"]:
                     examples = ex.get("overlap_examples") or []
                     ex_line = "; ".join(examples[:2]) if examples else ""
                     lines.append(
                         f"- **{ex.get('a_name')}** (`{ex.get('a_id')}`) ↔ "
                         f"**{ex.get('b_name')}** (`{ex.get('b_id')}`)"
-                        + (f" — overlap: {ex_line}" if ex_line else "")
+                        + (f" — {ex.get('reason', '')[:200]}" if ex.get('reason') else "")
+                        + (f" — e.g. {ex_line}" if ex_line else "")
                     )
         lines.append("")
 

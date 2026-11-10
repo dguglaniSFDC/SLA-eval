@@ -37,7 +37,15 @@ def _render(template: str, bindings: dict[str, Any]) -> str:
 
 
 def _cache_key(call: JudgeCall) -> str:
-    payload = json.dumps({"t": call.template, "r": call.rubric, "i": call.inputs}, sort_keys=True)
+    rubric_body = _load(RUBRICS_DIR / f"{call.rubric}.md")
+    template_body = _load(JUDGES_DIR / f"{call.template}.md")
+    payload = json.dumps({
+        "t": call.template,
+        "r": call.rubric,
+        "rh": hashlib.sha256(rubric_body.encode()).hexdigest(),
+        "th": hashlib.sha256(template_body.encode()).hexdigest(),
+        "i": call.inputs,
+    }, sort_keys=True)
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
