@@ -1,6 +1,6 @@
 # agentscript-eval
 
-Evaluates AgentScript training output by diffing a **before** and **after** script and scoring the delta — what training added — against the scenarios that drove it. Seven metrics; five static (code-only), two judge-backed.
+Evaluates AgentScript training output by diffing a **before** and **after** script and scoring the delta — what training added — against the scenarios that drove it. Five metrics; four static (code-only), one judge-backed.
 
 Pair with `sla-contact-reason-eval` (taxonomy quality) and `sla-scenario-eval` (scenario quality).
 
@@ -28,8 +28,6 @@ Trigger phrases:
 | Priority | Metric | Judge? | Threshold |
 |---|---|---|---|
 | P0 | Use-case ownership | optional pointwise | 90% |
-| P1 | Determinism | ✓ pointwise | 70% |
-| P1 | Overfitting / hardcoding | — | 90% |
 | P1 | Use-case focus | — | 85% |
 | P1 | Subagent substance | — | 85% |
 | P1 | Instruction substance | ✓ pointwise | 80% |
@@ -48,10 +46,9 @@ Pre-existing content is ignored.
 ## Which metrics run?
 
 ```
-before + after + scenarios            → use_case_ownership, overfitting,
-                                         use_case_focus, subagent_substance,
-                                         action_gating
-+ live judge (no --static-only)        → + determinism, instruction_substance
+before + after + scenarios            → use_case_ownership, use_case_focus,
+                                         subagent_substance, action_gating
++ live judge (no --static-only)        → + instruction_substance
 ```
 
 Missing input → SKIPPED, not FAIL.
@@ -103,7 +100,7 @@ agentscript-eval/
 ├── config.json
 ├── requirements.txt
 ├── judges/        pointwise.md, pairwise.md
-├── rubrics/       7 metric definitions
+├── rubrics/       5 metric definitions
 ├── harness/       parser.py, diff.py, judge.py,
 │                  static_metrics.py, judge_metrics.py,
 │                  report.py, run.py
@@ -113,7 +110,7 @@ agentscript-eval/
 ## Design principles
 
 - **Diff-first.** Only grade what training wrote. Pre-existing subagents are ignored (reported in the diff summary).
-- **Structural checks are static.** Hardcoding, substance, focus, gating are all code-only.
-- **Meaning checks are judged.** Determinism and instruction-substance need to tell `if verified → run(…)` from *"use your judgment to decide whether…"*; those two are pointwise LLM calls, cached by sha256(template+rubric+inputs).
+- **Structural checks are static.** Substance, focus, gating are all code-only.
+- **Meaning checks are judged.** Instruction-substance needs to tell a concrete decision rule from *"use your judgment to decide whether…"*; it's a pointwise LLM call, cached by sha256(template+rubric+inputs).
 - **Partial credit, not pass/fail.** Scores are percentages; the report applies thresholds for PASS/WARN/FAIL coloring.
 - **Attribution.** Scenarios are attributed to added subagents by tag + name-token matching against the subagent body.

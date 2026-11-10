@@ -1,6 +1,6 @@
 ---
 name: agentscript-eval
-description: Evaluate AgentScript training by diffing a before/after script and scoring the added material against the training scenarios on 7 structural + semantic metrics.
+description: Evaluate AgentScript training by diffing a before/after script and scoring the added material against the training scenarios on 5 structural + semantic metrics.
 ---
 
 # AgentScript Evaluation
@@ -34,8 +34,6 @@ Companions:
 | Priority | Metric | Judge? | Threshold |
 |---|---|---|---|
 | P0 | Use-case ownership | optional pointwise | 90% |
-| P1 | Determinism | ✓ pointwise | 70% |
-| P1 | Overfitting / hardcoding | — | 90% |
 | P1 | Use-case focus | — | 85% |
 | P1 | Subagent substance | — | 85% |
 | P1 | Instruction substance | ✓ pointwise | 80% |
@@ -50,9 +48,9 @@ See `rubrics/*.md` for the exact definition of each.
 ## Which metrics run?
 
 ```
-before + after + scenarios        → use_case_ownership, overfitting, use_case_focus,
+before + after + scenarios        → use_case_ownership, use_case_focus,
                                      subagent_substance, action_gating
-+ live judge (no --static-only)    → + determinism, instruction_substance,
++ live judge (no --static-only)    → + instruction_substance,
                                        + judge-assisted ownership
 ```
 
@@ -61,7 +59,7 @@ Missing input → SKIPPED, not FAIL.
 ## Design principles
 
 1. **Diff-first.** Pre-existing content is not training output; don't let it inflate or depress scores.
-2. **Structural checks are static.** Hardcoding, substance, focus, gating are code-only.
-3. **Meaning checks are judged.** Determinism (natural-language vs rule) and instruction-substance (decision rules present) need semantics; everything else is grammar.
+2. **Structural checks are static.** Substance, focus, gating are code-only.
+3. **Meaning checks are judged.** Instruction-substance (decision rules present) needs semantics; everything else is grammar.
 4. **Partial credit over hard gates.** Scores are percentages; thresholds decide PASS/WARN/FAIL in the report.
 5. **Pluggable parser.** JSON and YAML native; DSL via regex fallback; failing parse surfaces a loud SKIP, never a crash.

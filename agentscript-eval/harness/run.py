@@ -107,17 +107,13 @@ def main() -> int:
     results["action_gating"] = action_gating(added_subs, attrib)
 
     if args.static_only:
-        results["overfitting_hardcoding"] = {"skipped": True, "reason": "judge-backed; static-only mode"}
-        results["determinism"] = {"skipped": True, "reason": "static-only mode"}
         results["instruction_substance"] = {"skipped": True, "reason": "static-only mode"}
     else:
         import anthropic
         from judge import Judge
-        from judge_metrics import determinism, instruction_substance, overfitting
+        from judge_metrics import instruction_substance
         client = anthropic.Anthropic()
         judge = Judge(client=client, model=args.model, cache_dir=args.cache_dir)
-        results["overfitting_hardcoding"] = overfitting(added_subs, judge)
-        results["determinism"] = determinism(added_subs, scenarios, config, attrib, judge, full_after=after["subagents"])
         results["instruction_substance"] = instruction_substance(added_subs, attrib, judge)
 
     diff_summary = {
