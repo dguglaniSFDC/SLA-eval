@@ -79,6 +79,9 @@ def write_report(results: dict[str, Any], thresholds: dict[str, float], out_dir:
         lines.append(f"| {label} | {_fmt_pct(score)} | {thr*100:.0f}% | {status} |")
 
     lines.append("")
+
+    _append_grounding_vs_coverage_reconciliation(lines, results)
+
     lines.append("## Drill-downs")
     lines.append("")
     for name in METRIC_ORDER:
@@ -90,6 +93,80 @@ def write_report(results: dict[str, Any], thresholds: dict[str, float], out_dir:
         lines.append("")
 
     report_path.write_text("\n".join(lines))
+
+
+def _append_grounding_vs_coverage_reconciliation(lines: list[str], results: dict[str, Any]) -> None:
+    """Cross-check per-scenario grounding against conversation coverage.
+
+    Grounding and Coverage disagree systematically when the grounding retrieval layer
+    mis-shortlists transcripts. A scenario can be `ungrounded` (no matching transcript
+    found in its top-5) while Coverage shows real conversations actually mapping to it.
+    Those disagreements are retrieval misses, not fabrications — surface them so
+    readers don't over-interpret a low grounding score.
+    """
+    g = results.get("scenario_grounding")
+    c = results.get("conversation_coverage")
+    if not g or g.get("skipped") or not c or c.get("skipped"):
+        return
+
+    per_g = {p.get("scenario"): p.get("verdict") for p in g.get("per_scenario") or []}
+    per_c = c.get("per_conversation") or []
+
+    scenarios_with_real_coverage: dict[str, list[str]] = {}
+    for p in per_c:
+        if p.get("verdict") in {"covered", "partial"}:
+            sid = p.get("scenario_match_id")
+            if sid:
+                scenarios_with_real_coverage.setdefault(sid, []).append(p.get("conversation"))
+
+    retrieval_misses: list[tuple[str, int]] = []
+    confirmed_fabrications: list[str] = []
+    for sid, verdict in per_g.items():
+        if verdict in {"ungrounded", "partial"}:
+            matched_convs = scenarios_with_real_coverage.get(sid, [])
+            if matched_convs:
+                retrieval_misses.append((sid, len(matched_convs)))
+            else:
+                confirmed_fabrications.append(sid)
+
+    if not retrieval_misses and not confirmed_fabrications:
+        return
+
+    lines.append("## Grounding vs Coverage reconciliation")
+    lines.append("")
+    retrieval_mode = g.get("retrieval_mode", "bm25")
+    lines.append(
+        f"Grounding retrieval mode: **{retrieval_mode}**. "
+        f"When Grounding and Coverage disagree per scenario, Coverage is ground truth — "
+        f"a scenario can look ungrounded only because retrieval picked the wrong top-5 "
+        f"transcripts, not because the scenario is fabricated."
+    )
+    lines.append("")
+    if retrieval_misses:
+        lines.append(
+            f"**Retrieval misses ({len(retrieval_misses)}):** "
+            f"flagged ungrounded by Grounding but have ≥1 real conversation match in Coverage."
+        )
+        for sid, n in sorted(retrieval_misses, key=lambda x: -x[1]):
+            lines.append(f"- `{sid}` — grounding=ungrounded, coverage={n} conv(s)")
+        lines.append("")
+    if confirmed_fabrications:
+        lines.append(
+            f"**Confirmed fabrications ({len(confirmed_fabrications)}):** "
+            f"ungrounded AND zero conversation matches — likely genuine pipeline fabrications."
+        )
+        for sid in confirmed_fabrications:
+            lines.append(f"- `{sid}`")
+        lines.append("")
+    denom = len([v for v in per_g.values() if v is not None])
+    if denom:
+        true_fab_rate = len(confirmed_fabrications) / denom
+        lines.append(
+            f"**Adjusted fabrication rate:** "
+            f"{len(confirmed_fabrications)}/{denom} = {true_fab_rate*100:.1f}% "
+            f"(vs raw ungrounded rate of {(len(retrieval_misses)+len(confirmed_fabrications))/denom*100:.1f}%)."
+        )
+        lines.append("")
 
 
 def _append_drilldown(lines: list[str], name: str, r: dict) -> None:
@@ -158,11 +235,22 @@ def _append_drilldown(lines: list[str], name: str, r: dict) -> None:
     elif name == "conversation_coverage":
         if r.get("sla_eligible_only"):
             n_dropped = r.get("n_dropped_ineligible", 0)
+            n_total = r.get("n_total", 0)
+            corpus_total = n_total + n_dropped
             lines.append(
-                f"- SLA-eligible-only mode: scored over {r.get('n_total')} eligible conversations "
-                f"({n_dropped} dropped as UNRESOLVED / NOT_ACTIONABLE / KNOWLEDGE_ONLY)"
+                f"- Denominator: {n_total} SLA-eligible conversations "
+                f"(filtered from {corpus_total}; {n_dropped} dropped as "
+                f"UNRESOLVED / NOT_ACTIONABLE / KNOWLEDGE_ONLY / cut-off / promised-callback — "
+                f"not resolvable by an SLA tool-call agent). "
+                f"Pass --include-ineligible to score the raw corpus."
             )
-        lines.append(f"- Buckets: {r.get('buckets')}; total conversations: {r.get('n_total')}")
+        else:
+            lines.append(
+                f"- Denominator: all {r.get('n_total')} conversations (raw corpus; "
+                f"--include-ineligible was passed). Eligibility filter is off, so "
+                f"voicemails, wrong-number calls, and knowledge-only Q&A count against coverage."
+            )
+        lines.append(f"- Buckets: {r.get('buckets')}")
         uncov = r.get("uncovered_examples") or []
         if uncov:
             lines.append(f"- Uncovered conversations ({len(uncov)} shown):")

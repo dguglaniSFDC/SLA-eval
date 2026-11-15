@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import random
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Callable
 
@@ -35,12 +37,73 @@ def _bm25ish_rank(query: str, docs: list[tuple[str, str]], k: int = 5) -> list[t
     return [doc for _, doc in scored[:k]]
 
 
+def _make_embedder():
+    """Return a callable: list[str] -> np.ndarray. Prefers OpenAI; falls back to MiniLM.
+
+    Mirrors sla-contact-reason-eval's make_embedder so the two skills share one retrieval layer.
+    Returns None if neither provider is available — caller should fall back to BM25.
+    """
+    try:
+        import numpy as np
+        try:
+            import openai
+            client = openai.OpenAI()
+            model = "text-embedding-3-small"
+
+            def embed(texts):
+                resp = client.embeddings.create(model=model, input=texts)
+                return np.array([d.embedding for d in resp.data])
+            return embed
+        except Exception:
+            from sentence_transformers import SentenceTransformer
+            model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+            return lambda texts: model.encode(texts, convert_to_numpy=True)
+    except Exception:
+        return None
+
+
+def _embed_rank(
+    query: str,
+    docs: list[tuple[str, str]],
+    embedder,
+    doc_embeddings,
+    k: int = 5,
+) -> list[tuple[str, str]]:
+    """Cosine-similarity top-k over pre-computed doc embeddings."""
+    import numpy as np
+    q_emb = embedder([query])[0]
+    q_norm = q_emb / (np.linalg.norm(q_emb) + 1e-9)
+    d_norms = doc_embeddings / (np.linalg.norm(doc_embeddings, axis=1, keepdims=True) + 1e-9)
+    sims = d_norms @ q_norm
+    top_idx = np.argsort(-sims)[:k]
+    return [docs[i] for i in top_idx]
+
+
 # ---------- 1. Scenario Grounding ----------
 
 def grounding(scenarios: list[dict], transcripts: dict[str, str], judge: Judge) -> dict[str, Any]:
+    """For each scenario, shortlist 5 transcripts and ask the judge if the scenario is real.
+
+    Retrieval: uses embedding similarity when available (preferred — robust to topical skew
+    in the corpus); falls back to BM25-ish keyword overlap if embeddings can't be built.
+    BM25 performs poorly when one topic (e.g. device troubleshooting) dominates the corpus —
+    it mis-shortlists off-topic transcripts for every scenario, making real scenarios look
+    ungrounded. Embeddings fix this at the cost of one batch embed call per corpus.
+    """
     docs = [(tid, text) for tid, text in transcripts.items()]
     results = []
     bucket = {"grounded": 0, "partial": 0, "ungrounded": 0}
+
+    embedder = _make_embedder()
+    doc_embeddings = None
+    retrieval_mode = "bm25"
+    if embedder is not None and docs:
+        try:
+            doc_embeddings = embedder([text[:3000] for _, text in docs])
+            retrieval_mode = "embedding"
+        except Exception:
+            doc_embeddings = None
+            retrieval_mode = "bm25"
 
     for s in scenarios:
         sid = s.get("id") or "<unknown>"
@@ -48,7 +111,10 @@ def grounding(scenarios: list[dict], transcripts: dict[str, str], judge: Judge) 
             (s.get("goal") or "") + " " +
             " ".join((c.get("description") or "") for c in s.get("criteria") or [])
         )
-        shortlist = _bm25ish_rank(query, docs, k=5)
+        if doc_embeddings is not None:
+            shortlist = _embed_rank(query, docs, embedder, doc_embeddings, k=5)
+        else:
+            shortlist = _bm25ish_rank(query, docs, k=5)
         if not shortlist:
             results.append({"scenario": sid, "verdict": "ungrounded", "reason": "no transcripts matched keywords"})
             bucket["ungrounded"] += 1
@@ -67,7 +133,12 @@ def grounding(scenarios: list[dict], transcripts: dict[str, str], judge: Judge) 
 
     total = sum(bucket.values())
     score = (bucket["grounded"] + 0.5 * bucket["partial"]) / total if total else 0.0
-    return {"score": score, "buckets": bucket, "per_scenario": results}
+    return {
+        "score": score,
+        "buckets": bucket,
+        "per_scenario": results,
+        "retrieval_mode": retrieval_mode,
+    }
 
 
 # ---------- 1b. Conversation Coverage (inverse of grounding) ----------
@@ -95,15 +166,19 @@ def _scenario_index_text(s: dict) -> str:
     return " ".join(parts)
 
 
-def classify_sla_eligibility(transcripts: dict[str, str], judge: Judge) -> dict[str, dict]:
+def classify_sla_eligibility(
+    transcripts: dict[str, str],
+    judge: Judge,
+    concurrency: int = 16,
+) -> dict[str, dict]:
     """Classify each conversation as sla_eligible (RESOLVED + backend action) or ineligible.
 
     SLA scenarios drive tool-call-based resolutions. Convos that are UNRESOLVED, NOT_ACTIONABLE,
     or pure knowledge-lookup/how-to guidance don't match that shape and shouldn't count
     against Conversation Coverage. See rubrics/conversation-eligibility.md.
     """
-    out: dict[str, dict] = {}
-    for tid, text in transcripts.items():
+    def classify_one(tid_text: tuple[str, str]) -> tuple[str, dict]:
+        tid, text = tid_text
         verdict = judge.call(JudgeCall(
             template="pointwise",
             rubric="conversation-eligibility",
@@ -115,12 +190,18 @@ def classify_sla_eligibility(transcripts: dict[str, str], judge: Judge) -> dict[
         score = str(verdict.get("score", "ineligible")).lower()
         if score not in {"sla_eligible", "ineligible"}:
             score = "ineligible"
-        out[tid] = {
+        return tid, {
             "eligibility": score,
             "resolution": verdict.get("resolution"),
             "action_type": verdict.get("action_type"),
             "reason": verdict.get("reason", ""),
         }
+
+    out: dict[str, dict] = {}
+    items = list(transcripts.items())
+    with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
+        for tid, row in pool.map(classify_one, items):
+            out[tid] = row
     return out
 
 
@@ -129,7 +210,9 @@ def conversation_coverage(
     transcripts: dict[str, str],
     judge: Judge,
     k: int = 5,
-    sla_eligible_only: bool = False,
+    sla_eligible_only: bool = True,
+    sample_n: int | None = None,
+    concurrency: int = 16,
 ) -> dict[str, Any]:
     """For each conversation, judge whether any scenario covers its intent + flow.
 
@@ -137,14 +220,27 @@ def conversation_coverage(
     this one asks "does each conversation trace to a scenario". Catches long-tail
     customer behavior the scenario set never represents.
 
-    When `sla_eligible_only=True`, classify each conv first and drop ineligible ones
-    (UNRESOLVED / NOT_ACTIONABLE / KNOWLEDGE_ONLY) from the denominator. See
-    rubrics/conversation-eligibility.md for the eligibility rule.
+    By default (`sla_eligible_only=True`), each conversation is classified first and
+    the ineligible ones (UNRESOLVED / NOT_ACTIONABLE / KNOWLEDGE_ONLY / cut-off /
+    promised-callback) are dropped from the denominator. SLA scenarios drive tool-call
+    resolutions, so convos a bot could not resolve that way shouldn't count against
+    coverage. See rubrics/conversation-eligibility.md for the eligibility rule. Pass
+    `sla_eligible_only=False` to score against the raw corpus.
     """
+    # Sample FIRST, then classify / filter. A random sample of the whole corpus gives
+    # an unbiased estimate of both the eligible rate and the covered-among-eligible rate.
+    corpus_total = len(transcripts)
+    sampled = False
+    if sample_n is not None and corpus_total > sample_n:
+        tids = sorted(transcripts.keys())
+        picked = random.Random(43).sample(tids, sample_n)
+        transcripts = {tid: transcripts[tid] for tid in picked}
+        sampled = True
+
     eligibility: dict[str, dict] = {}
     dropped: list[dict] = []
     if sla_eligible_only:
-        eligibility = classify_sla_eligibility(transcripts, judge)
+        eligibility = classify_sla_eligibility(transcripts, judge, concurrency=concurrency)
         kept: dict[str, str] = {}
         for tid, text in transcripts.items():
             cls = eligibility.get(tid, {})
@@ -157,24 +253,16 @@ def conversation_coverage(
     scenario_docs = [(s.get("id") or f"scn_{i}", _scenario_index_text(s)) for i, s in enumerate(scenarios)]
     scenario_by_id = {sid: s for (sid, _), s in zip(scenario_docs, scenarios)}
 
-    results: list[dict] = []
-    bucket = {"covered": 0, "partial": 0, "uncovered": 0}
-    uncovered_examples: list[dict] = []
-
-    for tid, text in transcripts.items():
+    def eval_one(tid_text: tuple[str, str]) -> dict:
+        tid, text = tid_text
         query = text[:2000]
         shortlist = _bm25ish_rank(query, scenario_docs, k=k)
         if not shortlist:
-            results.append({"conversation": tid, "verdict": "uncovered", "reason": "no scenario keyword overlap"})
-            bucket["uncovered"] += 1
-            uncovered_examples.append({"conversation": tid, "reason": "no keyword overlap"})
-            continue
-
+            return {"conversation": tid, "verdict": "uncovered", "reason": "no scenario keyword overlap"}
         candidates_block = "\n\n---\n\n".join(
             f"[{sid}]\n{json.dumps({'goal': scenario_by_id[sid].get('goal'), 'persona': scenario_by_id[sid].get('persona'), 'criteria': [c.get('name') for c in scenario_by_id[sid].get('criteria') or []]}, indent=2)}"
             for sid, _ in shortlist
         )
-
         verdict = judge.call(JudgeCall(
             template="pointwise",
             rubric="conversation-coverage",
@@ -184,18 +272,26 @@ def conversation_coverage(
             },
         ))
         v = str(verdict.get("score", "uncovered")).lower()
-        if v not in bucket:
+        if v not in {"covered", "partial", "uncovered"}:
             v = "uncovered"
-        bucket[v] += 1
-        row = {
+        return {
             "conversation": tid,
             "verdict": v,
             "scenario_match_id": verdict.get("scenario_match_id"),
             "reason": verdict.get("reason", ""),
         }
-        results.append(row)
-        if v == "uncovered":
-            uncovered_examples.append(row)
+
+    results: list[dict] = []
+    bucket = {"covered": 0, "partial": 0, "uncovered": 0}
+    uncovered_examples: list[dict] = []
+
+    items = list(transcripts.items())
+    with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
+        for row in pool.map(eval_one, items):
+            results.append(row)
+            bucket[row["verdict"]] += 1
+            if row["verdict"] == "uncovered":
+                uncovered_examples.append(row)
 
     total = sum(bucket.values())
     score = (bucket["covered"] + 0.5 * bucket["partial"]) / total if total else 0.0
@@ -210,6 +306,10 @@ def conversation_coverage(
         out["sla_eligible_only"] = True
         out["n_dropped_ineligible"] = len(dropped)
         out["dropped_ineligible"] = dropped[:50]
+    if sampled:
+        out["sampled"] = True
+        out["corpus_total"] = corpus_total
+        out["sample_n"] = total
     return out
 
 
