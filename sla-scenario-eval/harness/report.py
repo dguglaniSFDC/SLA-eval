@@ -172,11 +172,45 @@ def _append_grounding_vs_coverage_reconciliation(lines: list[str], results: dict
 def _append_drilldown(lines: list[str], name: str, r: dict) -> None:
     if name == "tag_coverage":
         uncov = r.get("uncovered") or []
+        denom_filter = r.get("denominator_filter", "all")
+        excluded_na = r.get("n_excluded_not_automatable") or 0
+        excluded_parents = r.get("n_excluded_parents") or 0
         lines.append(f"- Covered: {r.get('n_covered')}/{r.get('n_total')}")
+        if denom_filter == "automatable_leaves":
+            lines.append(
+                f"- Denominator: automatable leaves only "
+                f"(dropped {excluded_na} non-automatable leaves and "
+                f"{excluded_parents} parent categories). Reasons with "
+                f"`automationPotentialBand == \"Not automatable\"` or score==0 "
+                f"are not SLA-training targets, so missing scenarios on them isn't a gap."
+            )
+        elif denom_filter == "leaves":
+            lines.append(
+                f"- Denominator: leaves only (dropped {excluded_parents} parent categories). "
+                f"Pass --automation-scores to also drop non-automatable leaves."
+            )
         if uncov:
             lines.append("- Uncovered reasons:")
             for u in uncov[:50]:
-                lines.append(f"  - {u.get('category')}::{u.get('name')}")
+                band = u.get("automation_band")
+                vol = u.get("volume")
+                suffix = ""
+                if band or vol is not None:
+                    bits = []
+                    if band:
+                        bits.append(f"band={band}")
+                    if vol is not None:
+                        bits.append(f"vol={vol}")
+                    suffix = f" ({', '.join(bits)})"
+                lines.append(f"  - {u.get('category')}::{u.get('name')}{suffix}")
+        tna = r.get("tagged_non_automatable") or []
+        if tna:
+            lines.append(
+                f"- Tagged against non-automatable reasons ({len(tna)}) — "
+                f"scenarios on these are unlikely to train useful tool-call behavior:"
+            )
+            for u in tna[:20]:
+                lines.append(f"  - {u.get('category')}::{u.get('name')} (band={u.get('automation_band')})")
         over = r.get("oversampled") or []
         if over:
             lines.append(f"- Oversampled: {', '.join(over)}")

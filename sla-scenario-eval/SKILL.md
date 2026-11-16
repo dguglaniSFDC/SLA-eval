@@ -11,13 +11,13 @@ P0 catches "this will break training"; P1 catches "this has rough edges but is u
 
 | Priority | Metric | What it measures |
 |---|---|---|
-| P0 | **Conversation coverage** | % of conversations in the corpus represented by ≥1 scenario (goal + persona + context facts match the conversation's intent and flow). Catches scenario sets that only sample the easy half of the corpus. |
+| P0 | **Conversation coverage** | % of **SLA-eligible** conversations represented by ≥1 scenario (goal + persona + context facts match the conversation's intent and flow). Catches scenario sets that only sample the easy half of the corpus. **By default, the corpus is pre-filtered**: UNRESOLVED / NOT_ACTIONABLE / KNOWLEDGE_ONLY / cut-off / promised-callback calls are dropped before scoring, because SLA scenarios drive tool-call resolutions and a bot can't resolve those shapes. Pass `--include-ineligible` to score against the raw corpus. |
 | P0 | **Scenario grounding** | % of scenarios whose customer situation (goal, persona, context) AND evaluation criteria both match real conversations. Catches fabricated scenarios. |
 | P0 | **Scenario evaluability** | % of criteria that can be fairly passed from the scenario alone (static check, 5 block rules — see rubric). Tool input/output field mismatches report as warnings, not blocks. |
 | P0 | **Goal-criteria fit** | % of criteria whose descriptions describe a step that logically serves the scenario's goal. Goal is ground truth; criteria are judged `fit` / `out_of_scope` / `mis_attached` / `contradicts_goal`. Catches criteria accidentally attached to the wrong scenario. |
 | P0 | **Criteria completeness** | Avg per-scenario completeness for criteria (tool invoked / outcome stated / verification honored where applicable) on a 0–3 scale normalized to a percentage. |
 | P0 | **Scenario uniqueness** | % of within-reason scenario pairs that are meaningfully distinct. A set padded with near-duplicates trains on a smaller, more biased corpus than the headline count suggests. |
-| P1 | **Tag coverage** | % of taxonomy reasons with ≥1 scenario tagged to them. |
+| P1 | **Tag coverage** | % of taxonomy reasons with ≥1 scenario tagged to them. **Denominator defaults to leaf reasons** (parent categories are not tagged against). If `--automation-scores` is passed, the denominator further drops leaves with `automationPotentialBand == "Not automatable"` (or score == 0) — those intents aren't SLA-training targets (pricing lookups, call transfers, human-dispatch RMAs), so missing scenarios on them isn't a gap. |
 | P1 | **Verification-criteria coverage** | % of sensitive scenarios (invoice/credit/case/unlink/permissions) with a verification-gate criterion. |
 | P1 | **Field completeness rate** | % of required fields (goal, persona, context facts, seeds, criteria, tags) that are actually populated — not just technically present with an empty list. |
 | P1 | **Variation coverage** | % of distinct real-world situations (e.g., with/without photo, customer tier) represented by ≥1 scenario seed. |
@@ -94,16 +94,28 @@ Missing inputs → metric is marked SKIPPED. All judge rubrics live in `rubrics/
 
 ```bash
 # Dry-run (no LLM calls, shows plan + which metrics will skip)
-python harness/run.py --input ./runs/<run-name> --dry-run
+python harness/run.py --scenarios ./scenarios.json --reasons ./taxonomy.json \
+  --transcripts ./conversations --out ./runs/<run-name> --dry-run
 
-# Full
-python harness/run.py --input ./runs/<run-name>
+# Full (default: Conversation Coverage excludes SLA-ineligible calls)
+python harness/run.py --scenarios ./scenarios.json --reasons ./taxonomy.json \
+  --transcripts ./conversations --out ./runs/<run-name>
 
-# Single metric
-python harness/run.py --input ./runs/<run-name> --metric evaluability
+# Score Conversation Coverage against the raw corpus (voicemails, wrong-number,
+# knowledge-only Q&A all count against coverage)
+python harness/run.py --scenarios ./scenarios.json --reasons ./taxonomy.json \
+  --transcripts ./conversations --out ./runs/<run-name> --include-ineligible
+
+# Score Tag coverage against automatable leaves only (DataPrep final-result.json
+# supplies automationPotentialScore / Band per leaf — "Not automatable" leaves are
+# dropped from the denominator)
+python harness/run.py --scenarios ./scenarios.json --reasons ./taxonomy.json \
+  --transcripts ./conversations --out ./runs/<run-name> \
+  --automation-scores ./final-result.json
 
 # Static-only (no judge calls — just Evaluability, Criteria completeness, Tag coverage, Verification coverage, Field completeness)
-python harness/run.py --input ./runs/<run-name> --static-only
+python harness/run.py --scenarios ./scenarios.json --reasons ./taxonomy.json \
+  --out ./runs/<run-name> --static-only
 ```
 
 ## Trigger phrases
@@ -119,6 +131,7 @@ python harness/run.py --input ./runs/<run-name> --static-only
 - **Static vs judge**: five metrics (Tag coverage, Evaluability, Verification coverage, Criteria completeness, Field completeness) run with zero LLM calls. Judge is used where semantic reasoning is required (Grounding, Conversation coverage, Goal-criteria fit, Scenario uniqueness, Variation coverage, Tagging confidence).
 - **Goal-criteria fit** uses the scenario's `goal` as ground truth and judges each criterion as `fit` / `out_of_scope` / `mis_attached` / `contradicts_goal`. Catches the pipeline bug where a well-written criterion is bolted onto the wrong scenario (e.g. a "retrieve order to support the price adjustment request" criterion attached to a cancel-refund scenario). See `rubrics/goal-criteria-fit.md`.
 - **Conversation coverage is the inverse of Grounding.** Grounding iterates scenarios → shortlists transcripts → asks "is this scenario real?". Coverage iterates conversations → shortlists scenarios → asks "is this conversation represented?". Both are needed: a scenario set that passes grounding at 100% can still cover <50% of the corpus if it only samples the easy cases. Threshold is intentionally lower (80% vs grounding's 90%) because the long tail is expected.
+- **Conversation Coverage defaults to the SLA-eligible denominator.** Each transcript is first classified against `rubrics/conversation-eligibility.md`; only RESOLVED-with-backend-action calls count. Voicemail / wrong-number / cut-off / promised-callback / knowledge-only Q&A convos are dropped — SLA scenarios drive tool-call resolutions, so a bot can't resolve those shapes regardless of scenario count. The dropped list is still surfaced in the report so you can audit it. Use `--include-ineligible` to disable the filter.
 - **Evaluability has 5 explicit block rules** (listed in `rubrics/evaluability.md`). A sixth rule — tool-input/output field mismatch — reports as a warning, not a block.
 - **Sensitive scenarios** are detected by regex over goal/criteria descriptions (configurable in `config.json → sensitive_patterns`). Verification-gate criteria are detected by regex over criterion name/description (`verification_patterns`).
 - **Rubrics in markdown**, one judge template per shape (same `pointwise.md`/`pairwise.md`/`grounded-match.md` as `sla-contact-reason-eval`).

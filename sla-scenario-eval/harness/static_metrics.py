@@ -77,30 +77,93 @@ def tag_matches_reason(tag: str, reason: dict[str, Any]) -> bool:
 
 # ---------- 1. Tag Coverage ----------
 
+def _is_automatable(reason: dict) -> bool:
+    """A reason is in-scope for Tag coverage if its automation score is > 0 (or missing).
+
+    When the harness is run with --automation-scores, each reason gets an
+    `automation_potential_score` / `automation_potential_band` field. Reasons with
+    band=="Not automatable" OR score==0 are dropped from the denominator — SLA
+    scenarios target automation, so missing scenarios on non-automatable reasons
+    (e.g. pricing lookups, call transfers, human-dispatch RMAs) isn't a gap.
+
+    Reasons lacking an annotation (no scores file provided) default to automatable
+    so Tag coverage behaves exactly as before.
+    """
+    if "automation_potential_band" in reason:
+        band = (reason.get("automation_potential_band") or "").lower()
+        if band == "not automatable":
+            return False
+    if "automation_potential_score" in reason:
+        score = reason.get("automation_potential_score")
+        if score is not None and score == 0:
+            return False
+    return True
+
+
 def tag_coverage(scenarios: list[dict], reasons: list[dict]) -> dict[str, Any]:
     tag_counts: dict[str, int] = {}
     for s in scenarios:
         for t in s.get("tags") or []:
             tag_counts[t] = tag_counts.get(t, 0) + 1
 
+    # Filter to parent-less leaves when parent_id is present (parents aren't
+    # tagged against). Then filter to automatable reasons when annotated.
+    has_parent_info = any("parent_id" in r for r in reasons)
+    if has_parent_info:
+        scorable = [r for r in reasons if r.get("parent_id")]
+    else:
+        scorable = list(reasons)
+
+    has_automation_info = any("automation_potential_band" in r or "automation_potential_score" in r
+                              for r in scorable)
+    automatable = [r for r in scorable if _is_automatable(r)]
+    excluded_not_automatable = [r for r in scorable if not _is_automatable(r)]
+
+    denom_reasons = automatable if has_automation_info else scorable
+
     hit = []
     miss = []
     reason_counts: dict[str, int] = {}
-    for r in reasons:
+    for r in denom_reasons:
         name = r.get("name") or r.get("contact_reason") or ""
         count = sum(c for t, c in tag_counts.items() if tag_matches_reason(t, r))
         reason_counts[name] = count
         (hit if count > 0 else miss).append(r)
 
+    # Also detect scenarios tagged against non-automatable reasons (wasted coverage).
+    tagged_but_not_automatable = []
+    if has_automation_info:
+        for r in excluded_not_automatable:
+            if any(tag_matches_reason(t, r) for t in tag_counts):
+                tagged_but_not_automatable.append(
+                    {"category": r.get("category"), "name": r.get("name"),
+                     "automation_band": r.get("automation_potential_band")}
+                )
+
     med = sorted(reason_counts.values())[len(reason_counts) // 2] if reason_counts else 0
     oversampled = [n for n, c in reason_counts.items() if med and c > 5 * med]
 
     return {
-        "score": len(hit) / len(reasons) if reasons else 0.0,
+        "score": len(hit) / len(denom_reasons) if denom_reasons else 0.0,
         "n_covered": len(hit),
-        "n_total": len(reasons),
-        "uncovered": [{"category": r.get("category"), "name": r.get("name")} for r in miss],
+        "n_total": len(denom_reasons),
+        "denominator_filter": "automatable_leaves" if has_automation_info else (
+            "leaves" if has_parent_info else "all"
+        ),
+        "n_excluded_not_automatable": len(excluded_not_automatable) if has_automation_info else 0,
+        "n_excluded_parents": len(reasons) - len(scorable) if has_parent_info else 0,
+        "uncovered": [
+            {
+                "category": r.get("category"),
+                "name": r.get("name"),
+                "automation_band": r.get("automation_potential_band"),
+                "automation_score": r.get("automation_potential_score"),
+                "volume": r.get("volume"),
+            }
+            for r in miss
+        ],
         "oversampled": oversampled,
+        "tagged_non_automatable": tagged_but_not_automatable,
     }
 
 

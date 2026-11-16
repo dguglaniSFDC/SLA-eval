@@ -46,18 +46,57 @@ def load_reasons(path: Path) -> list[dict]:
     if isinstance(data, dict) and "reasons" in data:
         data = data["reasons"]
     if isinstance(data, list):
+        # First pass: build id -> name map so we can resolve parent_id to a
+        # category string for taxonomies that use parent_id instead of flat
+        # category fields (sla-contact-reason-eval shape).
+        id_to_name = {r.get("id"): r.get("name") for r in data
+                      if isinstance(r, dict) and r.get("id")}
         out = []
         for r in data:
             if isinstance(r, str):
                 out.append({"category": "", "name": r})
-            else:
-                out.append({
-                    "category": r.get("category", ""),
-                    "name": r.get("name") or r.get("contact_reason"),
-                    "description": r.get("description", ""),
-                })
+                continue
+            parent_id = r.get("parent_id")
+            # Category precedence: explicit category > resolved parent name > ""
+            category = r.get("category") or (id_to_name.get(parent_id) if parent_id else "") or ""
+            out.append({
+                "category": category,
+                "name": r.get("name") or r.get("contact_reason"),
+                "description": r.get("description", ""),
+                "parent_id": parent_id,
+            })
         return out
     raise ValueError(f"{path}: unrecognized reasons format")
+
+
+def load_automation_scores(path: Path | None) -> dict[str, dict]:
+    """Return {"<Category>::<SubReason>": {score, band, volume, ...}} or {} if no file.
+
+    Accepts the DataPrep `final-result.json` shape (with `readinessStats.nodeScores`)
+    or a bare `{<fqkey>: {...}}` dict.
+    """
+    if not path:
+        return {}
+    data = json.loads(path.read_text())
+    if isinstance(data, dict) and "readinessStats" in data:
+        data = data["readinessStats"].get("nodeScores") or {}
+    if not isinstance(data, dict):
+        return {}
+    return data
+
+
+def _annotate_reasons_with_automation(reasons: list[dict], scores: dict[str, dict]) -> None:
+    """Mutate each reason in place to attach automationPotentialScore + Band when known."""
+    for r in reasons:
+        cat = (r.get("category") or "").strip()
+        name = (r.get("name") or "").strip()
+        key = f"{cat}::{name}" if cat else name
+        s = scores.get(key)
+        if not s:
+            continue
+        r["automation_potential_score"] = s.get("automationPotentialScore")
+        r["automation_potential_band"] = s.get("automationPotentialBand")
+        r["volume"] = s.get("volume")
 
 
 def load_transcripts(dir_path: Path | None) -> dict[str, str]:
@@ -91,10 +130,25 @@ def main() -> int:
     ap.add_argument("--transcripts", type=Path, default=None, help="directory of normalized transcripts")
     ap.add_argument("--out", type=Path, default=SKILL_ROOT / "runs" / "latest")
     ap.add_argument("--static-only", action="store_true", help="skip judge-backed metrics")
+    ap.add_argument("--include-ineligible", action="store_true",
+                    help="score Conversation Coverage against ALL transcripts, including "
+                         "UNRESOLVED / NOT_ACTIONABLE / KNOWLEDGE_ONLY calls. Default is "
+                         "to exclude those from the denominator — SLA scenarios drive "
+                         "tool-call-based resolutions, so convos a bot could not resolve "
+                         "that way shouldn't count against coverage.")
     ap.add_argument("--sla-eligible-only", action="store_true",
-                    help="when scoring conversation coverage, drop convs that are UNRESOLVED, "
-                         "NOT_ACTIONABLE, or pure knowledge-lookup from the denominator. "
-                         "Only RESOLVED convs with a backend/mutating tool call count.")
+                    help=argparse.SUPPRESS)  # kept for backward compat; now default behavior
+    ap.add_argument("--coverage-sample", type=int, default=None,
+                    help="when scoring conversation coverage, sample at most N conversations "
+                         "(random, seeded, unbiased). Omit to score every transcript.")
+    ap.add_argument("--coverage-concurrency", type=int, default=16,
+                    help="parallel judge calls during conversation coverage (default 16)")
+    ap.add_argument("--automation-scores", type=Path, default=None,
+                    help="path to DataPrep final-result.json (or {<fqkey>: {...}} dict) "
+                         "with automationPotentialScore / Band per reason. When present, "
+                         "Tag coverage denominator drops leaves with band=='Not automatable' "
+                         "(or score==0) — those reasons aren't SLA-training targets, so "
+                         "missing scenarios on them isn't a gap.")
     ap.add_argument("--dry-run", action="store_true", help="validate inputs and exit")
     ap.add_argument("--model", default=os.environ.get("ANTHROPIC_MODEL", "claude-opus-4-7"))
     ap.add_argument("--cache-dir", type=Path, default=SKILL_ROOT / ".cache")
@@ -106,8 +160,13 @@ def main() -> int:
     scenarios = load_scenarios(args.scenarios)
     reasons = load_reasons(args.reasons)
     transcripts = load_transcripts(args.transcripts)
+    automation_scores = load_automation_scores(args.automation_scores)
+    if automation_scores:
+        _annotate_reasons_with_automation(reasons, automation_scores)
 
-    print(f"scenarios: {len(scenarios)}  reasons: {len(reasons)}  transcripts: {len(transcripts)}")
+    print(f"scenarios: {len(scenarios)}  reasons: {len(reasons)}  transcripts: {len(transcripts)}"
+          + (f"  automation-scored: {sum(1 for r in reasons if 'automation_potential_score' in r)}"
+             if automation_scores else ""))
 
     if args.dry_run:
         print("dry-run OK")
@@ -158,7 +217,10 @@ def main() -> int:
         if transcripts:
             results["scenario_grounding"] = grounding(scenarios, transcripts, judge)
             results["conversation_coverage"] = conversation_coverage(
-                scenarios, transcripts, judge, sla_eligible_only=args.sla_eligible_only
+                scenarios, transcripts, judge,
+                sla_eligible_only=not args.include_ineligible,
+                sample_n=args.coverage_sample,
+                concurrency=args.coverage_concurrency,
             )
         else:
             results["scenario_grounding"] = {"skipped": True, "reason": "no --transcripts provided"}
